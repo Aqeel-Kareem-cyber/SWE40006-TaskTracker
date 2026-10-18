@@ -150,8 +150,16 @@ The application provides a health-check endpoint:
 
 A healthy application returns an HTTP 200 response.
 
-The current health check confirms application availability
-but does not verify database connectivity.
+The health check includes a database check that queries the
+Tasks table, so it reports `Unhealthy` when the SQLite
+database is unavailable.
+
+The `/version` endpoint returns the Git commit the running
+build was made from:
+
+```json
+{"commit": "<sha>", "environment": "Production"}
+```
 
 ## Project Structure
 
@@ -170,18 +178,32 @@ TaskTracker/
 └── TaskTracker.csproj
 ```
 
-## DevOps Integration
+## Running in Docker
 
-The application is intended to integrate with:
+```bash
+GIT_SHA=$(git rev-parse HEAD) docker compose up --build -d
+```
 
-- GitHub Actions for CI/CD
-- Docker for application packaging
-- Automated testing
-- AWS for cloud deployment
-- Amazon CloudWatch for monitoring
+The application is then available at http://localhost:8080.
+Task data is kept in the `tasktracker-data` volume and survives
+container replacement.
 
-These infrastructure components are managed through
-separate group workstreams.
+## CI/CD Pipeline
+
+Every push to `main` runs `.github/workflows/ci-cd.yml`:
+
+1. Build and run the unit and integration tests with a coverage gate.
+2. Build the container image, test it, and publish it to GitHub
+   Container Registry tagged with the commit SHA.
+3. Deploy the image to the staging EC2 server and run the smoke
+   and end-to-end tests against it.
+4. Promote the same image to the production EC2 server, run the
+   production smoke test, and roll back automatically if it fails.
+
+Pull requests run steps 1 and 2 without deploying.
+
+See [docs/PIPELINE.md](docs/PIPELINE.md) for configuration,
+recovery steps and the evidence checklist.
 
 ## Current Limitations
 

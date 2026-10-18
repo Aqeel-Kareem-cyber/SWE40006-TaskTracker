@@ -1,0 +1,581 @@
+# TaskTracker CI/CD pipeline (SWE40006)
+#
+#   push to main ─► build & test ─► image (build, container test, push to GHCR)
+#                   ─► deploy staging ─► staging tests ─► deploy production ─► production smoke
+#
+# Pull requests run build & test and the image job without pushing or deploying.
+# Production is deployed automatically once staging passes (no manual approval).
+# Every image is tagged with its commit SHA and the same image is promoted from
+# staging to production. A failed gate stops the run and production keeps
+# serving the previous release.
+#
+# Manual recovery: Actions ► CI/CD ► Run workflow, enter a previous commit SHA in
+# "redeploy_sha" to put that already-built image back into production.
+#
+# Configuration (see docs/PIPELINE.md):
+#   Repository variables: DEPLOY_METHOD (ssm|ssh), AWS_REGION, STAGING_URL,
+#                         PRODUCTION_URL, LOG_GROUP_PREFIX (optional)
+#   Environment "staging" and "production":
+#     variables EC2_INSTANCE_ID (ssm) or EC2_HOST (ssh)
+#     secrets   EC2_SSH_KEY (ssh only)
+#   Repository secrets: AWS_ROLE_ARN (OIDC, preferred) or
+#                       AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      redeploy_sha:
+        description: "Recovery: full commit SHA of an earlier release to put back into production (leave empty for a normal run)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# One pipeline per branch at a time; a newer push to main waits for the
+# running one rather than cancelling a deployment half-way.
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  APP_PROJECT: TaskTracker/TaskTracker.csproj
+  IMAGE_NAME: swe40006-tasktracker
+  AWS_REGION: ${{ vars.AWS_REGION || 'ap-southeast-2' }}
+  DEPLOY_METHOD: ${{ vars.DEPLOY_METHOD || 'ssm' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  build-test:
+    name: Build and test
+    if: github.event.inputs.redeploy_sha == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Find projects
+        id: projects
+        shell: bash
+        run: |
+          # Unit and component-integration test projects: *Tests.csproj, excluding
+          # browser/staging suites (*E2E* / *Staging*), which run after deployment.
+          tests="$(find . -name '*Tests.csproj' -not -path '*/bin/*' -not -path '*/obj/*' \
+                   | grep -viE 'e2e|staging|playwright' | sort | tr '\n' ' ' || true)"
+          echo "tests=${tests}" >> "$GITHUB_OUTPUT"
+          echo "Test projects: ${tests:-none found}"
+
+      - name: Restore
+        run: |
+          dotnet restore "$APP_PROJECT"
+          for p in ${{ steps.projects.outputs.tests }}; do dotnet restore "$p"; done
+
+      - name: Build
+        run: dotnet build "$APP_PROJECT" --configuration Release --no-restore
+
+      - name: Unit and integration tests with coverage gate
+        if: steps.projects.outputs.tests != ''
+        shell: bash
+        run: |
+          # Coverage gate from the Project Brief: 80% line and 70% branch (total).
+          # Uses coverlet.msbuild (referenced by the test projects). Thresholds
+          # can be overridden with the COVERAGE_LINE / COVERAGE_BRANCH variables.
+          status=0
+          for p in ${{ steps.projects.outputs.tests }}; do
+            name="$(basename "$p" .csproj)"
+            dotnet test "$p" --configuration Release --no-restore \
+              --logger "trx;LogFileName=${name}.trx" \
+              --results-directory TestResults \
+              /p:CollectCoverage=true \
+              /p:CoverletOutputFormat=cobertura \
+              /p:CoverletOutput="$GITHUB_WORKSPACE/coverage/${name}/" \
+              /p:Threshold=${{ vars.COVERAGE_LINE || '80' }}%2c${{ vars.COVERAGE_BRANCH || '70' }} \
+              /p:ThresholdType=line%2cbranch \
+              /p:ThresholdStat=total \
+              /p:ExcludeByFile="**/Migrations/*.cs%2c**/Program.cs" \
+              || status=1
+          done
+          exit $status
+
+      - name: No test projects yet
+        if: steps.projects.outputs.tests == ''
+        run: echo "::warning::No *Tests.csproj found. Build passed but no tests ran."
+
+      - name: Coverage report
+        if: always() && steps.projects.outputs.tests != ''
+        shell: bash
+        run: |
+          if ls coverage/*/coverage.cobertura.xml >/dev/null 2>&1; then
+            dotnet tool install --global dotnet-reportgenerator-globaltool >/dev/null
+            reportgenerator -reports:"coverage/*/coverage.cobertura.xml" \
+              -targetdir:coverage/report -reporttypes:"Html;MarkdownSummaryGithub"
+            cat coverage/report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No coverage files produced (is coverlet.msbuild referenced by the test projects?)"
+          fi
+
+      - name: Upload test results and coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.sha }}
+          path: |
+            TestResults/
+            coverage/
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  image:
+    name: Build, check and publish image
+    needs: build-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.ref.outputs.image }}
+      repo: ${{ steps.ref.outputs.repo }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image reference
+        id: ref
+        shell: bash
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"   # GHCR names must be lower case
+          repo="ghcr.io/${owner}/${IMAGE_NAME}"
+          echo "repo=${repo}" >> "$GITHUB_OUTPUT"
+          echo "image=${repo}:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (linux/amd64 for EC2)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          build-args: GIT_SHA=${{ github.sha }}
+          tags: ${{ steps.ref.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Container test (start, health, version, persistence across replacement)
+        shell: bash
+        env:
+          IMAGE: ${{ steps.ref.outputs.image }}
+        run: |
+          set -euo pipefail
+          docker volume create ci-data >/dev/null
+          start() {
+            docker run -d --name ci-app -p 8080:8080 -v ci-data:/app/data \
+              -e ASPNETCORE_ENVIRONMENT=Staging "$IMAGE" >/dev/null
+            for _ in $(seq 1 30); do
+              [ "$(curl -fsS http://localhost:8080/health 2>/dev/null)" = "Healthy" ] && return 0
+              sleep 2
+            done
+            docker logs ci-app; return 1
+          }
+          start
+          echo "PASS /health Healthy"
+          curl -fsS -o /dev/null http://localhost:8080/ && echo "PASS / 200"
+          curl -fsS -o /dev/null http://localhost:8080/Tasks && echo "PASS /Tasks 200"
+          version="$(curl -fsS http://localhost:8080/version || true)"
+          if [[ "$version" == *"$GITHUB_SHA"* ]]; then echo "PASS /version reports commit"
+          else echo "::warning::/version did not report ${GITHUB_SHA} (got '${version}'). Add the /version endpoint."; fi
+          uid="$(docker exec ci-app id -u)"
+          if [ "$uid" = "0" ]; then echo "FAIL container runs as root"; exit 1; fi
+          echo "PASS container runs as non-root (uid ${uid})"
+
+          # Same smoke script the deployments use: form create/delete and a latency sample.
+          OUT_DIR=smoke-results/container bash scripts/smoke.sh http://localhost:8080 "$GITHUB_SHA" 20
+
+          # Persistence: create a task, replace the container on the same volume,
+          # and check the task is still listed.
+          jar="$(mktemp)"
+          tok="$(curl -fsS -c "$jar" -b "$jar" http://localhost:8080/Tasks \
+                 | grep -o 'name="__RequestVerificationToken" type="hidden" value="[^"]*"' | head -1 | sed 's/.*value="//; s/"$//')"
+          title="PERSIST-${GITHUB_RUN_ID}"
+          curl -fsS -c "$jar" -b "$jar" -o /dev/null \
+            --data-urlencode "__RequestVerificationToken=${tok}" --data-urlencode "NewTask.Title=${title}" \
+            --data-urlencode "NewTask.Status=To Do" --data-urlencode "NewTask.Priority=Low" \
+            http://localhost:8080/Tasks
+          curl -fsS http://localhost:8080/Tasks | grep -q "$title" || { echo "FAIL task was not created"; exit 1; }
+          docker rm -f ci-app >/dev/null
+          start
+          if curl -fsS http://localhost:8080/Tasks | grep -q "$title"; then
+            echo "PASS task '${title}' survived container replacement"
+          else
+            echo "FAIL task lost after container replacement"; exit 1
+          fi
+          docker rm -f ci-app >/dev/null; docker volume rm ci-data >/dev/null
+
+      - name: Vulnerability scan (report only)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.ref.outputs.image }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: table
+          exit-code: "0"
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          REPO: ${{ steps.ref.outputs.repo }}
+        run: |
+          set -euo pipefail
+          short="${GITHUB_SHA::7}"
+          docker tag "${REPO}:sha-${GITHUB_SHA}" "${REPO}:sha-${short}"
+          docker tag "${REPO}:sha-${GITHUB_SHA}" "${REPO}:main"
+          docker push "${REPO}:sha-${GITHUB_SHA}"
+          docker push "${REPO}:sha-${short}"
+          docker push "${REPO}:main"
+          digest="$(docker image inspect -f '{{index .RepoDigests 0}}' "${REPO}:sha-${GITHUB_SHA}")"
+          {
+            echo "### Image published"
+            echo "- Tags: \`sha-${GITHUB_SHA}\`, \`sha-${short}\`, \`main\`"
+            echo "- Digest: \`${digest}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy to staging
+    needs: image
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AWS credentials (OIDC role)
+        if: env.DEPLOY_METHOD == 'ssm' && vars.AWS_AUTH != 'keys'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: AWS credentials (access keys)
+        if: env.DEPLOY_METHOD == 'ssm' && vars.AWS_AUTH == 'keys'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy image to staging
+        uses: ./.github/actions/deploy
+        with:
+          method: ${{ env.DEPLOY_METHOD }}
+          image: ${{ needs.image.outputs.image }}
+          expected-sha: ${{ github.sha }}
+          app-env: Staging
+          reset-data: "true"          # staging starts from a clean migrated database each release
+          log-group: ${{ vars.LOG_GROUP_PREFIX && format('{0}/staging', vars.LOG_GROUP_PREFIX) || '' }}
+          aws-region: ${{ env.AWS_REGION }}
+          instance-id: ${{ vars.EC2_INSTANCE_ID }}
+          ssh-host: ${{ vars.EC2_HOST }}
+          ssh-user: ${{ vars.EC2_SSH_USER || 'ec2-user' }}
+          ssh-key: ${{ secrets.EC2_SSH_KEY }}
+          ghcr-user: ${{ github.actor }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  staging-tests:
+    name: Staging smoke and end-to-end tests
+    needs: [image, deploy-staging]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Smoke test staging
+        run: bash scripts/smoke.sh "${{ vars.STAGING_URL }}" "${{ github.sha }}" 100
+        env:
+          OUT_DIR: smoke-results/staging
+
+      - name: Find end-to-end test projects
+        id: e2e
+        shell: bash
+        run: |
+          projects="$(find . -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' \
+                      | grep -iE 'e2e|staging|playwright' | sort | tr '\n' ' ' || true)"
+          echo "projects=${projects}" >> "$GITHUB_OUTPUT"
+          echo "End-to-end projects: ${projects:-none found}"
+
+      - uses: actions/setup-dotnet@v4
+        if: steps.e2e.outputs.projects != ''
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build end-to-end tests and install Chromium
+        if: steps.e2e.outputs.projects != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in ${{ steps.e2e.outputs.projects }}; do
+            dotnet build "$p" --configuration Release
+            dir="$(dirname "$p")"
+            script="$(find "$dir/bin/Release" -name playwright.ps1 | head -1 || true)"
+            if [ -n "$script" ]; then pwsh "$script" install --with-deps chromium; fi
+          done
+
+      - name: Run staging integration and Playwright tests
+        if: steps.e2e.outputs.projects != ''
+        shell: bash
+        env:
+          # The test projects read the deployed site's address from this variable.
+          TASKTRACKER_BASE_URL: ${{ vars.STAGING_URL }}
+          EXPECTED_COMMIT: ${{ github.sha }}
+          E2E_RUN_PREFIX: E2E-${{ github.run_number }}-
+        run: |
+          status=0
+          for p in ${{ steps.e2e.outputs.projects }}; do
+            name="$(basename "$p" .csproj)"
+            dotnet test "$p" --configuration Release --no-build \
+              --logger "trx;LogFileName=${name}.trx" --results-directory TestResults || status=1
+          done
+          exit $status
+
+      - name: No end-to-end tests yet
+        if: steps.e2e.outputs.projects == ''
+        run: echo "::warning::No E2E/Playwright test project found. Staging was checked by the smoke test only."
+
+      - name: Upload staging evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-results-${{ github.sha }}
+          path: |
+            smoke-results/
+            TestResults/
+            **/playwright-traces/
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  deploy-production:
+    name: Deploy to production
+    needs: [image, staging-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record the release currently in production
+        id: before
+        shell: bash
+        run: |
+          prev="$(curl -fsS --max-time 10 "${{ vars.PRODUCTION_URL }}/version" 2>/dev/null | jq -r '.commit // empty' 2>/dev/null || true)"
+          echo "sha=${prev}" >> "$GITHUB_OUTPUT"
+          echo "Production before this release: ${prev:-unknown}"
+
+      - name: AWS credentials (OIDC role)
+        if: env.DEPLOY_METHOD == 'ssm' && vars.AWS_AUTH != 'keys'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: AWS credentials (access keys)
+        if: env.DEPLOY_METHOD == 'ssm' && vars.AWS_AUTH == 'keys'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Promote the staging-tested image to production
+        id: deploy
+        uses: ./.github/actions/deploy
+        with:
+          method: ${{ env.DEPLOY_METHOD }}
+          image: ${{ needs.image.outputs.image }}
+          expected-sha: ${{ github.sha }}
+          app-env: Production
+          reset-data: "false"
+          log-group: ${{ vars.LOG_GROUP_PREFIX && format('{0}/production', vars.LOG_GROUP_PREFIX) || '' }}
+          aws-region: ${{ env.AWS_REGION }}
+          instance-id: ${{ vars.EC2_INSTANCE_ID }}
+          ssh-host: ${{ vars.EC2_HOST }}
+          ssh-user: ${{ vars.EC2_SSH_USER || 'ec2-user' }}
+          ssh-key: ${{ secrets.EC2_SSH_KEY }}
+          ghcr-user: ${{ github.actor }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Production smoke test
+        id: smoke
+        run: bash scripts/smoke.sh "${{ vars.PRODUCTION_URL }}" "${{ github.sha }}" 100
+        env:
+          OUT_DIR: smoke-results/production
+
+      - name: Roll back to the previous release
+        if: failure() && steps.deploy.outcome == 'success' && steps.smoke.outcome == 'failure' && steps.before.outputs.sha != ''
+        uses: ./.github/actions/deploy
+        with:
+          method: ${{ env.DEPLOY_METHOD }}
+          image: ${{ needs.image.outputs.repo }}:sha-${{ steps.before.outputs.sha }}
+          expected-sha: ${{ steps.before.outputs.sha }}
+          app-env: Production
+          log-group: ${{ vars.LOG_GROUP_PREFIX && format('{0}/production', vars.LOG_GROUP_PREFIX) || '' }}
+          aws-region: ${{ env.AWS_REGION }}
+          instance-id: ${{ vars.EC2_INSTANCE_ID }}
+          ssh-host: ${{ vars.EC2_HOST }}
+          ssh-user: ${{ vars.EC2_SSH_USER || 'ec2-user' }}
+          ssh-key: ${{ secrets.EC2_SSH_KEY }}
+          ghcr-user: ${{ github.actor }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deployment record (lead time for the metrics table)
+        if: always()
+        shell: bash
+        env:
+          COMMIT_TIME: ${{ github.event.head_commit.timestamp }}
+          OUTCOME: ${{ steps.smoke.outcome }}
+          IMAGE: ${{ needs.image.outputs.image }}
+          PREVIOUS: ${{ steps.before.outputs.sha }}
+        run: |
+          now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          lead=""
+          if [ -n "$COMMIT_TIME" ]; then
+            lead=$(( $(date -u +%s) - $(date -u -d "$COMMIT_TIME" +%s) ))
+          fi
+          mkdir -p smoke-results
+          jq -n --arg sha "$GITHUB_SHA" --arg image "$IMAGE" --arg prev "$PREVIOUS" \
+                --arg commit_time "$COMMIT_TIME" --arg verified_at "$now" \
+                --arg lead "$lead" --arg outcome "$OUTCOME" --arg run "$GITHUB_RUN_ID" \
+                '{commit:$sha, image:$image, previous_commit:$prev, commit_time:$commit_time,
+                  production_verified_at:$verified_at, lead_time_seconds:($lead|tonumber? // null),
+                  outcome:$outcome, run_id:$run}' > smoke-results/deployment-record.json
+          cat smoke-results/deployment-record.json
+          {
+            echo "### Production release"
+            echo "- Commit: \`${GITHUB_SHA::7}\` (previous: \`${PREVIOUS:0:7}\`)"
+            echo "- Outcome: ${OUTCOME}"
+            [ -n "$lead" ] && echo "- Commit to verified production: $((lead / 60)) min $((lead % 60)) s (target ≤ 15 min)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload production evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-results-${{ github.sha }}
+          path: smoke-results/
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Manual recovery: put an earlier, already-published image back into production.
+  redeploy-production:
+    name: Recovery redeploy to production
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.redeploy_sha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image reference
+        id: ref
+        shell: bash
+        run: echo "repo=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: AWS credentials (OIDC role)
+        if: env.DEPLOY_METHOD == 'ssm' && vars.AWS_AUTH != 'keys'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: AWS credentials (access keys)
+        if: env.DEPLOY_METHOD == 'ssm' && vars.AWS_AUTH == 'keys'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Redeploy ${{ github.event.inputs.redeploy_sha }}
+        uses: ./.github/actions/deploy
+        with:
+          method: ${{ env.DEPLOY_METHOD }}
+          image: ${{ steps.ref.outputs.repo }}:sha-${{ github.event.inputs.redeploy_sha }}
+          expected-sha: ${{ github.event.inputs.redeploy_sha }}
+          app-env: Production
+          log-group: ${{ vars.LOG_GROUP_PREFIX && format('{0}/production', vars.LOG_GROUP_PREFIX) || '' }}
+          aws-region: ${{ env.AWS_REGION }}
+          instance-id: ${{ vars.EC2_INSTANCE_ID }}
+          ssh-host: ${{ vars.EC2_HOST }}
+          ssh-user: ${{ vars.EC2_SSH_USER || 'ec2-user' }}
+          ssh-key: ${{ secrets.EC2_SSH_KEY }}
+          ghcr-user: ${{ github.actor }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Production smoke test
+        run: bash scripts/smoke.sh "${{ vars.PRODUCTION_URL }}" "${{ github.event.inputs.redeploy_sha }}" 100
+        env:
+          OUT_DIR: smoke-results/production

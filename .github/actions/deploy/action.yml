@@ -1,0 +1,142 @@
+name: Deploy TaskTracker to an EC2 host
+description: >
+  Sends deploy/deploy.sh to an EC2 host and runs it there, through AWS Systems
+  Manager Run Command (method "ssm") or SSH (method "ssh"). The script swaps the
+  container, health-checks it and rolls back on failure. AWS credentials must
+  already be configured in the job when method is "ssm".
+
+inputs:
+  method:
+    description: ssm or ssh
+    required: true
+  image:
+    description: Image reference to deploy (registry/name:tag)
+    required: true
+  expected-sha:
+    description: Commit the /version endpoint must report after start-up
+    required: false
+    default: ""
+  app-env:
+    description: Staging or Production
+    required: true
+  reset-data:
+    description: "true to rebuild an empty database (staging only)"
+    required: false
+    default: "false"
+  log-group:
+    description: CloudWatch Logs group for container logs (empty = default json-file logging)
+    required: false
+    default: ""
+  aws-region:
+    required: false
+    default: ap-southeast-2
+  instance-id:
+    description: EC2 instance ID (ssm method)
+    required: false
+    default: ""
+  ssh-host:
+    description: Host name or IP (ssh method)
+    required: false
+    default: ""
+  ssh-user:
+    required: false
+    default: ec2-user
+  ssh-key:
+    description: Private key (ssh method), passed from a secret
+    required: false
+    default: ""
+  ghcr-user:
+    description: GitHub user for pulling a private image from GHCR
+    required: false
+    default: ""
+  ghcr-token:
+    description: >
+      Token with read:packages (normally the job's GITHUB_TOKEN, which expires
+      when the job ends). Leave empty if the image is public or the host is
+      already logged in to ghcr.io.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Deploy through Systems Manager
+      if: inputs.method == 'ssm'
+      shell: bash
+      env:
+        INSTANCE_ID: ${{ inputs.instance-id }}
+        AWS_REGION: ${{ inputs.aws-region }}
+        IMAGE: ${{ inputs.image }}
+        EXPECTED_SHA: ${{ inputs.expected-sha }}
+        APP_ENV: ${{ inputs.app-env }}
+        RESET_DATA: ${{ inputs.reset-data }}
+        LOG_GROUP: ${{ inputs.log-group }}
+        GHCR_USER: ${{ inputs.ghcr-user }}
+        GHCR_TOKEN: ${{ inputs.ghcr-token }}
+      run: |
+        set -euo pipefail
+        [ -n "$INSTANCE_ID" ] || { echo "::error::instance-id is empty; set the EC2_INSTANCE_ID variable on this GitHub environment"; exit 1; }
+        source "$GITHUB_ACTION_PATH/remote-env.sh"
+        script_b64="$(base64 -w0 "$GITHUB_ACTION_PATH/../../../deploy/deploy.sh")"
+        params="$(jq -n --arg s "$script_b64" --arg e "$REMOTE_ENV" \
+          '{commands: ["set -e", "echo \($s) | base64 -d > /tmp/tasktracker-deploy.sh", "env \($e) bash /tmp/tasktracker-deploy.sh", "rm -f /tmp/tasktracker-deploy.sh"], executionTimeout: ["600"]}')"
+        command_id="$(aws ssm send-command \
+          --region "$AWS_REGION" \
+          --instance-ids "$INSTANCE_ID" \
+          --document-name AWS-RunShellScript \
+          --comment "TaskTracker ${APP_ENV} ${GITHUB_SHA::7} run ${GITHUB_RUN_ID}" \
+          --parameters "$params" \
+          --query Command.CommandId --output text)"
+        echo "SSM command ${command_id} sent to ${INSTANCE_ID}"
+
+        # Poll until the command finishes (aws ssm wait gives up after ~100 s).
+        status=Pending
+        for _ in $(seq 1 120); do
+          sleep 5
+          status="$(aws ssm get-command-invocation --region "$AWS_REGION" \
+            --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+            --query Status --output text 2>/dev/null || echo Pending)"
+          case "$status" in Pending|InProgress|Delayed) continue ;; *) break ;; esac
+        done
+
+        echo "----- host output -----"
+        aws ssm get-command-invocation --region "$AWS_REGION" \
+          --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+          --query '[StandardOutputContent, StandardErrorContent]' --output text || true
+        echo "-----------------------"
+        echo "SSM status: ${status}"
+        [ "$status" = "Success" ] || { echo "::error::Deployment to ${APP_ENV} failed (${status}). The host script restored the previous release."; exit 1; }
+
+    - name: Deploy through SSH
+      if: inputs.method == 'ssh'
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh-host }}
+        SSH_USER: ${{ inputs.ssh-user }}
+        SSH_KEY: ${{ inputs.ssh-key }}
+        IMAGE: ${{ inputs.image }}
+        EXPECTED_SHA: ${{ inputs.expected-sha }}
+        APP_ENV: ${{ inputs.app-env }}
+        RESET_DATA: ${{ inputs.reset-data }}
+        LOG_GROUP: ${{ inputs.log-group }}
+        AWS_REGION: ${{ inputs.aws-region }}
+        GHCR_USER: ${{ inputs.ghcr-user }}
+        GHCR_TOKEN: ${{ inputs.ghcr-token }}
+      run: |
+        set -euo pipefail
+        [ -n "$SSH_HOST" ] || { echo "::error::ssh-host is empty; set the EC2_HOST variable on this GitHub environment"; exit 1; }
+        [ -n "$SSH_KEY" ] || { echo "::error::ssh-key is empty; set the EC2_SSH_KEY secret on this GitHub environment"; exit 1; }
+        source "$GITHUB_ACTION_PATH/remote-env.sh"
+        keyfile="$(mktemp)"; trap 'rm -f "$keyfile"' EXIT
+        printf '%s\n' "$SSH_KEY" > "$keyfile"; chmod 600 "$keyfile"
+        ssh -i "$keyfile" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 \
+          "${SSH_USER}@${SSH_HOST}" "sudo env ${REMOTE_ENV} bash -s" \
+          < "$GITHUB_ACTION_PATH/../../../deploy/deploy.sh" \
+          || { echo "::error::Deployment to ${APP_ENV} failed. The host script restored the previous release."; exit 1; }
+
+    - name: Reject unknown method
+      if: inputs.method != 'ssm' && inputs.method != 'ssh'
+      shell: bash
+      run: |
+        echo "::error::Unknown deploy method '${{ inputs.method }}'. Set the DEPLOY_METHOD repository variable to ssm or ssh."
+        exit 1
