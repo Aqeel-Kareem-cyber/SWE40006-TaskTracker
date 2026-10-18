@@ -1,0 +1,55 @@
+# ========================================
+# SWE40006 TaskTracker
+# ========================================
+
+# .NET build outputs
+**/bin/
+**/obj/
+**/publish/
+
+# IDE and editor files
+.vs/
+.vscode/
+*.user
+*.suo
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Database backups
+*.bak
+*.backup
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+**/appsettings.*.local.json
+**/secrets.json
+
+# Logs
+*.log
+logs/
+Logs/
+
+# Test outputs
+TestResults/
+coverage/
+coverage-results/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+
+# Docker local overrides
+docker-compose.override.yml

@@ -1,0 +1,1361 @@
+/* ==========================================================
+   TASKTRACKER
+   BUSINESS WORKSPACE DESIGN SYSTEM
+   ========================================================== */
+
+/* ----------------------------------------------------------
+   1. DESIGN TOKENS
+   ---------------------------------------------------------- */
+
+:root {
+    --tt-bg: #f5f7fb;
+    --tt-surface: #ffffff;
+    --tt-surface-soft: #f8fafc;
+
+    --tt-text: #182235;
+    --tt-text-secondary: #475569;
+    --tt-muted: #758398;
+
+    --tt-border: #e4e9f1;
+    --tt-border-strong: #d5deea;
+
+    --tt-primary: #326bea;
+    --tt-primary-hover: #2559d4;
+    --tt-primary-light: #edf3ff;
+
+    --tt-success: #15976c;
+    --tt-success-light: #e7f7ef;
+
+    --tt-warning: #af7418;
+    --tt-warning-light: #fff3db;
+
+    --tt-danger: #c84747;
+    --tt-danger-light: #fff0ef;
+
+    --tt-radius-sm: 9px;
+    --tt-radius-md: 14px;
+    --tt-radius-lg: 18px;
+
+    --tt-shadow-sm: 0 2px 8px rgba(24, 34, 53, 0.025);
+    --tt-shadow-md: 0 10px 30px rgba(24, 34, 53, 0.055);
+
+    --tt-sidebar-width: 246px;
+}
+
+/* ----------------------------------------------------------
+   2. GLOBAL STYLES
+   ---------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 15px;
+    scroll-behavior: smooth;
+}
+
+body.tt-app {
+    margin: 0;
+    min-height: 100vh;
+
+    background: var(--tt-bg);
+    color: var(--tt-text);
+
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Inter,
+        Arial,
+        sans-serif;
+
+    -webkit-font-smoothing: antialiased;
+}
+
+body.tt-app h1,
+body.tt-app h2,
+body.tt-app h3,
+body.tt-app h4 {
+    color: var(--tt-text);
+    letter-spacing: -0.025em;
+}
+
+body.tt-app a {
+    transition:
+        color 0.18s ease,
+        background-color 0.18s ease,
+        border-color 0.18s ease;
+}
+
+body.tt-app :focus-visible {
+    outline: 3px solid rgba(50, 107, 234, 0.35);
+    outline-offset: 3px;
+}
+
+/* ----------------------------------------------------------
+   3. APPLICATION SHELL
+   ---------------------------------------------------------- */
+
+.tt-shell {
+    display: flex;
+    min-height: 100vh;
+    width: 100%;
+}
+
+/* ----------------------------------------------------------
+   4. SIDEBAR
+   ---------------------------------------------------------- */
+
+.tt-sidebar {
+    width: var(--tt-sidebar-width);
+    min-width: var(--tt-sidebar-width);
+    height: 100vh;
+
+    position: sticky;
+    top: 0;
+
+    display: flex;
+    flex-direction: column;
+
+    padding: 30px 18px 24px;
+
+    background: var(--tt-surface);
+    border-right: 1px solid var(--tt-border);
+
+    overflow-y: auto;
+    z-index: 10;
+}
+
+/* BRAND */
+
+.tt-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    margin: 0 8px 58px;
+
+    color: var(--tt-text);
+    text-decoration: none;
+
+    font-size: 20px;
+    font-weight: 750;
+    letter-spacing: -0.7px;
+}
+
+.tt-brand:hover {
+    color: var(--tt-text);
+}
+
+.tt-brand-symbol {
+    width: 42px;
+    height: 42px;
+    flex-shrink: 0;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: var(--tt-primary);
+    color: white;
+
+    border-radius: 12px;
+
+    font-size: 20px;
+    font-weight: 800;
+}
+
+/* SIDEBAR LABEL */
+
+.tt-sidebar-section {
+    margin: 0 14px 16px;
+
+    color: #94a0b1;
+
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.8px;
+}
+
+/* NAVIGATION */
+
+.tt-navigation {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.tt-navigation a {
+    display: flex;
+    align-items: center;
+
+    min-height: 46px;
+    padding: 12px 15px;
+
+    border-radius: var(--tt-radius-sm);
+
+    color: #5c6980;
+    text-decoration: none;
+
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.tt-navigation a:hover {
+    background: var(--tt-primary-light);
+    color: var(--tt-primary);
+}
+
+.tt-navigation a:focus-visible {
+    background: var(--tt-primary-light);
+    color: var(--tt-primary);
+}
+
+/* WORKSPACE ACCOUNT */
+
+.tt-sidebar-bottom {
+    margin-top: auto;
+    padding: 24px 9px 0;
+}
+
+.tt-workspace-indicator {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+
+    padding-top: 18px;
+
+    border-top: 1px solid var(--tt-border);
+}
+
+.tt-workspace-avatar {
+    width: 39px;
+    height: 39px;
+    flex-shrink: 0;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: var(--tt-primary-light);
+    color: var(--tt-primary);
+
+    border-radius: 11px;
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.tt-workspace-indicator strong {
+    display: block;
+
+    color: var(--tt-text);
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.tt-workspace-indicator small {
+    display: block;
+    margin-top: 3px;
+
+    color: var(--tt-muted);
+    font-size: 11px;
+}
+
+/* ----------------------------------------------------------
+   5. MAIN CONTENT AREA
+   ---------------------------------------------------------- */
+
+.tt-main-area {
+    flex: 1;
+    min-width: 0;
+    min-height: 100vh;
+}
+
+.tt-main-content {
+    width: 100%;
+    max-width: 1550px;
+
+    margin: 0 auto;
+    padding: 42px 46px 75px;
+}
+
+/* ----------------------------------------------------------
+   6. TOP NAVIGATION
+   ---------------------------------------------------------- */
+
+.tt-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+
+    width: 100%;
+    min-height: 76px;
+
+    padding: 15px 46px;
+
+    background: var(--tt-surface);
+    border-bottom: 1px solid var(--tt-border);
+}
+
+.tt-topbar-label {
+    color: var(--tt-muted);
+    font-size: 12px;
+    font-weight: 550;
+}
+
+/* ROLE PREVIEW DROPDOWN */
+
+.tt-view-switcher {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.tt-view-switcher label {
+    margin: 0;
+
+    color: var(--tt-muted);
+
+    font-size: 12px;
+    font-weight: 650;
+    white-space: nowrap;
+}
+
+.tt-view-switcher select {
+    min-width: 195px;
+    min-height: 41px;
+
+    padding: 9px 34px 9px 13px;
+
+    background-color: var(--tt-surface-soft);
+    border: 1px solid var(--tt-border-strong);
+    border-radius: 10px;
+
+    color: var(--tt-text);
+
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 650;
+
+    cursor: pointer;
+}
+
+.tt-view-switcher select:hover {
+    border-color: #a9bee9;
+}
+
+.tt-preview-pill {
+    display: inline-flex;
+    align-items: center;
+
+    padding: 8px 13px;
+
+    border-radius: 999px;
+
+    background: var(--tt-primary-light);
+    color: var(--tt-primary);
+
+    font-size: 11px;
+    font-weight: 750;
+}
+
+/* ----------------------------------------------------------
+   7. DASHBOARD CONTAINER
+   ---------------------------------------------------------- */
+
+.tt-readable-dashboard {
+    width: 100%;
+    max-width: 1450px;
+
+    margin: 0 auto;
+    padding-bottom: 30px;
+
+    color: var(--tt-text);
+}
+
+/* ----------------------------------------------------------
+   8. DASHBOARD HEADER
+   ---------------------------------------------------------- */
+
+.tt-read-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+
+    width: 100%;
+    gap: 24px;
+
+    margin-bottom: 25px;
+}
+
+.tt-read-header > div {
+    flex: 1;
+    min-width: 260px;
+}
+
+.tt-read-kicker {
+    display: block;
+
+    margin-bottom: 12px;
+
+    color: var(--tt-primary);
+
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.7px;
+    text-transform: uppercase;
+}
+
+.tt-read-header h1 {
+    margin: 0 0 10px;
+
+    color: var(--tt-text);
+
+    font-size: clamp(26px, 2.5vw, 35px);
+    line-height: 1.2;
+    font-weight: 750;
+    letter-spacing: -1px;
+}
+
+.tt-read-header p {
+    max-width: 660px;
+    margin: 0;
+
+    color: var(--tt-muted);
+
+    font-size: 14px;
+    line-height: 1.7;
+}
+
+/* MANAGE TASKS BUTTON */
+
+.tt-primary-button,
+.tt-read-header .tt-primary-button {
+    position: relative;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    flex-shrink: 0;
+
+    min-height: 45px;
+    padding: 12px 21px;
+    margin: 0;
+
+    background: var(--tt-primary);
+    border: 1px solid var(--tt-primary);
+    border-radius: 10px;
+
+    color: white;
+    text-decoration: none;
+
+    font-size: 13px;
+    font-weight: 750;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+.tt-primary-button:hover,
+.tt-read-header .tt-primary-button:hover {
+    background: var(--tt-primary-hover);
+    border-color: var(--tt-primary-hover);
+    color: white;
+}
+
+/* ----------------------------------------------------------
+   9. DEVELOPMENT PREVIEW MESSAGE
+   ---------------------------------------------------------- */
+
+.tt-read-notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+
+    gap: 6px 10px;
+
+    width: 100%;
+    min-height: 51px;
+
+    padding: 13px 17px;
+    margin: 0 0 39px;
+
+    background: #edf3ff;
+    border: 1px solid #dae6ff;
+    border-radius: 11px;
+
+    color: #526580;
+
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.tt-read-notice strong {
+    color: #2455b3;
+    font-weight: 800;
+}
+
+.tt-read-notice span {
+    color: #526580;
+}
+
+/* ----------------------------------------------------------
+   10. SECTION HEADINGS
+   ---------------------------------------------------------- */
+
+.tt-read-section {
+    display: block;
+    width: 100%;
+
+    margin-bottom: 45px;
+}
+
+.tt-read-section-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+
+    gap: 16px;
+    margin-bottom: 21px;
+}
+
+.tt-read-section-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 27px;
+    height: 27px;
+
+    margin-bottom: 11px;
+
+    background: var(--tt-primary-light);
+    border-radius: 8px;
+
+    color: var(--tt-primary);
+
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.tt-read-section-header h2 {
+    margin: 0 0 7px;
+
+    color: var(--tt-text);
+
+    font-size: 21px;
+    line-height: 1.3;
+    font-weight: 750;
+}
+
+.tt-read-section-header p {
+    margin: 0;
+
+    color: var(--tt-muted);
+
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+/* ----------------------------------------------------------
+   11. OVERVIEW STATISTICS
+   ---------------------------------------------------------- */
+
+.tt-read-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+
+    width: 100%;
+    gap: 17px;
+}
+
+.tt-read-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+
+    min-width: 0;
+    min-height: 183px;
+
+    padding: 25px 24px;
+
+    background: var(--tt-surface);
+
+    border: 1px solid var(--tt-border);
+    border-radius: var(--tt-radius-lg);
+
+    box-shadow: var(--tt-shadow-sm);
+
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease,
+        border-color 0.2s ease;
+}
+
+.tt-read-stat:hover {
+    transform: translateY(-3px);
+
+    border-color: #d2def0;
+    box-shadow: var(--tt-shadow-md);
+}
+
+.tt-read-stat-label {
+    display: block;
+
+    color: var(--tt-text-secondary);
+
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.tt-read-stat strong {
+    display: block;
+
+    margin: 17px 0 10px;
+
+    color: var(--tt-text);
+
+    font-size: clamp(31px, 3vw, 40px);
+    line-height: 1.1;
+    font-weight: 780;
+    letter-spacing: -1.2px;
+}
+
+.tt-read-stat small {
+    display: block;
+
+    margin-top: auto;
+
+    color: var(--tt-muted);
+
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+/* ----------------------------------------------------------
+   12. WORK PROGRESS PANEL
+   ---------------------------------------------------------- */
+
+.tt-read-panel {
+    display: block;
+    width: 100%;
+
+    padding: 29px 31px;
+
+    background: var(--tt-surface);
+
+    border: 1px solid var(--tt-border);
+    border-radius: var(--tt-radius-lg);
+
+    box-shadow: var(--tt-shadow-sm);
+}
+
+.tt-read-progress-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+
+    margin-bottom: 23px;
+}
+
+.tt-read-progress-top h3 {
+    margin: 0 0 8px;
+
+    color: var(--tt-text);
+
+    font-size: 17px;
+    font-weight: 750;
+}
+
+.tt-read-progress-top p {
+    margin: 0;
+
+    color: var(--tt-muted);
+
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.tt-read-progress-top strong {
+    flex-shrink: 0;
+
+    color: var(--tt-primary);
+
+    font-size: 31px;
+    font-weight: 780;
+    letter-spacing: -1px;
+}
+
+/* PROGRESS BAR */
+
+.tt-read-progress-track {
+    display: block;
+
+    width: 100%;
+    height: 12px;
+
+    background: #e9eef6;
+
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.tt-read-progress-fill {
+    display: block;
+
+    height: 100%;
+    min-width: 0;
+
+    background: linear-gradient(
+        90deg,
+        #326bea,
+        #5991ff
+    );
+
+    border-radius: 999px;
+
+    transition: width 0.35s ease;
+}
+
+.tt-read-progress-footer {
+    display: flex;
+    justify-content: space-between;
+
+    margin-top: 13px;
+
+    color: var(--tt-muted);
+
+    font-size: 11px;
+    font-weight: 600;
+}
+
+/* ----------------------------------------------------------
+   13. MANAGER ATTENTION LIST
+   ---------------------------------------------------------- */
+
+.tt-read-attention-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 18px;
+
+    padding: 20px 0;
+
+    border-bottom: 1px solid var(--tt-border);
+}
+
+.tt-read-attention-item:first-child {
+    padding-top: 0;
+}
+
+.tt-read-attention-item:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.tt-read-attention-main {
+    min-width: 0;
+}
+
+.tt-read-attention-main strong {
+    display: block;
+
+    margin-bottom: 9px;
+
+    color: var(--tt-text);
+
+    font-size: 14px;
+    line-height: 1.5;
+    font-weight: 750;
+}
+
+.tt-read-attention-details {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+
+    gap: 9px 13px;
+
+    color: var(--tt-muted);
+
+    font-size: 12px;
+}
+
+.tt-read-action-link {
+    display: inline-flex;
+    align-items: center;
+
+    flex-shrink: 0;
+
+    color: var(--tt-primary);
+
+    font-size: 13px;
+    font-weight: 750;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.tt-read-action-link:hover {
+    color: var(--tt-primary-hover);
+    text-decoration: underline;
+}
+
+.tt-read-empty {
+    padding: 35px 15px;
+    text-align: center;
+}
+
+.tt-read-empty strong {
+    display: block;
+
+    color: var(--tt-text);
+    font-size: 14px;
+}
+
+.tt-read-empty p {
+    margin: 9px 0 0;
+
+    color: var(--tt-muted);
+    font-size: 12px;
+}
+
+/* ----------------------------------------------------------
+   14. TASK BOARD — THREE COLUMNS
+   ---------------------------------------------------------- */
+
+.tt-read-board {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+
+    align-items: start;
+
+    width: 100%;
+    gap: 18px;
+}
+
+/* INDIVIDUAL LANES */
+
+.tt-read-lane {
+    display: flex;
+    flex-direction: column;
+
+    min-width: 0;
+    min-height: 320px;
+
+    padding: 17px;
+
+    background: #eef2f7;
+
+    border: 1px solid #e4eaf2;
+    border-radius: var(--tt-radius-lg);
+}
+
+/* LANE HEADER */
+
+.tt-read-lane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 12px;
+
+    min-height: 37px;
+    margin-bottom: 17px;
+    padding: 0 3px;
+}
+
+.tt-read-lane-title {
+    display: flex;
+    align-items: center;
+
+    min-width: 0;
+    gap: 10px;
+}
+
+.tt-read-lane-title h3 {
+    margin: 0;
+
+    color: var(--tt-text);
+
+    font-size: 14px;
+    font-weight: 750;
+}
+
+.tt-read-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    min-width: 29px;
+    height: 29px;
+
+    padding: 0 9px;
+
+    background: var(--tt-surface);
+
+    border: 1px solid var(--tt-border);
+    border-radius: 9px;
+
+    color: var(--tt-text-secondary);
+
+    font-size: 12px;
+    font-weight: 750;
+}
+
+/* STATUS INDICATORS */
+
+.tt-status-dot {
+    display: inline-block;
+
+    width: 9px;
+    height: 9px;
+
+    flex-shrink: 0;
+
+    border-radius: 50%;
+}
+
+.tt-status-dot.todo {
+    background: #94a3b8;
+}
+
+.tt-status-dot.active {
+    background: var(--tt-primary);
+}
+
+.tt-status-dot.complete {
+    background: var(--tt-success);
+}
+
+/* TASKS INSIDE LANES */
+
+.tt-read-lane-content {
+    display: flex;
+    flex-direction: column;
+
+    gap: 12px;
+}
+
+/* ----------------------------------------------------------
+   15. TASK CARDS
+   ---------------------------------------------------------- */
+
+.tt-read-task {
+    display: block;
+
+    min-width: 0;
+    padding: 20px;
+
+    background: var(--tt-surface);
+
+    border: 1px solid var(--tt-border);
+    border-radius: var(--tt-radius-md);
+
+    box-shadow: var(--tt-shadow-sm);
+
+    transition:
+        transform 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+.tt-read-task:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--tt-shadow-md);
+}
+
+.tt-read-task-top {
+    margin-bottom: 14px;
+}
+
+/* PRIORITY LABELS */
+
+.tt-read-priority {
+    display: inline-flex;
+    align-items: center;
+
+    padding: 6px 10px;
+
+    border-radius: 7px;
+
+    font-size: 11px;
+    line-height: 1.25;
+    font-weight: 750;
+}
+
+.tt-read-priority.high {
+    background: var(--tt-danger-light);
+    color: var(--tt-danger);
+}
+
+.tt-read-priority.medium {
+    background: var(--tt-warning-light);
+    color: var(--tt-warning);
+}
+
+.tt-read-priority.low {
+    background: var(--tt-success-light);
+    color: var(--tt-success);
+}
+
+/* TASK TITLE */
+
+.tt-read-task h4 {
+    margin: 0 0 10px;
+
+    color: var(--tt-text);
+
+    font-size: 15px;
+    line-height: 1.5;
+    font-weight: 750;
+
+    overflow-wrap: anywhere;
+}
+
+/* DESCRIPTION */
+
+.tt-read-task p {
+    margin: 0 0 16px;
+
+    color: var(--tt-muted);
+
+    font-size: 12px;
+    line-height: 1.75;
+
+    overflow-wrap: anywhere;
+}
+
+/* TASK FOOTER */
+
+.tt-read-task-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+
+    gap: 10px;
+
+    margin-top: 17px;
+    padding-top: 15px;
+
+    border-top: 1px solid var(--tt-border);
+
+    color: var(--tt-muted);
+
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.tt-read-task-footer a {
+    color: var(--tt-primary);
+
+    font-size: 12px;
+    font-weight: 750;
+    text-decoration: none;
+}
+
+.tt-read-task-footer a:hover {
+    text-decoration: underline;
+}
+
+/* EMPTY LANES */
+
+.tt-read-lane-empty {
+    padding: 44px 14px;
+
+    color: var(--tt-muted);
+
+    text-align: center;
+
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+/* ----------------------------------------------------------
+   16. TASK MANAGEMENT AND EDIT PAGES
+   ---------------------------------------------------------- */
+
+.tt-main-content .card {
+    background: var(--tt-surface);
+
+    border: 1px solid var(--tt-border);
+    border-radius: var(--tt-radius-lg);
+
+    box-shadow: var(--tt-shadow-sm);
+}
+
+.tt-main-content .card-body {
+    padding: 25px;
+}
+
+.tt-main-content .form-label {
+    color: var(--tt-text-secondary);
+
+    font-size: 13px;
+    font-weight: 650;
+
+    margin-bottom: 8px;
+}
+
+.tt-main-content .form-control,
+.tt-main-content .form-select {
+    min-height: 43px;
+
+    border: 1px solid var(--tt-border-strong);
+    border-radius: 9px;
+
+    background: var(--tt-surface);
+    color: var(--tt-text);
+
+    font-size: 13px;
+}
+
+.tt-main-content textarea.form-control {
+    min-height: 100px;
+}
+
+.tt-main-content .form-control:focus,
+.tt-main-content .form-select:focus {
+    border-color: var(--tt-primary);
+
+    box-shadow: 0 0 0 3px rgba(50, 107, 234, 0.12);
+}
+
+.tt-main-content .btn {
+    border-radius: 9px;
+
+    font-size: 12px;
+    font-weight: 700;
+
+    padding: 9px 15px;
+}
+
+.tt-main-content .btn-primary {
+    background: var(--tt-primary);
+    border-color: var(--tt-primary);
+}
+
+.tt-main-content .btn-primary:hover {
+    background: var(--tt-primary-hover);
+    border-color: var(--tt-primary-hover);
+}
+
+.tt-main-content .table {
+    color: var(--tt-text);
+    font-size: 13px;
+}
+
+.tt-main-content .table th {
+    color: var(--tt-text-secondary);
+
+    font-size: 12px;
+    font-weight: 750;
+
+    padding: 15px 12px;
+}
+
+.tt-main-content .table td {
+    padding: 16px 12px;
+    vertical-align: middle;
+}
+
+.tt-main-content .badge {
+    border-radius: 7px;
+
+    padding: 6px 9px;
+
+    font-size: 11px;
+    font-weight: 700;
+}
+
+/* ----------------------------------------------------------
+   17. RESPONSIVE DESIGN — LAPTOP
+   ---------------------------------------------------------- */
+
+@media (max-width: 1250px) {
+
+    .tt-main-content {
+        padding: 35px 30px 65px;
+    }
+
+    .tt-topbar {
+        padding: 15px 30px;
+    }
+
+    .tt-read-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+}
+
+/* ----------------------------------------------------------
+   18. RESPONSIVE DESIGN — TABLET
+   ---------------------------------------------------------- */
+
+@media (max-width: 1050px) {
+
+    .tt-sidebar {
+        width: 215px;
+        min-width: 215px;
+    }
+
+    .tt-read-board {
+        grid-template-columns: 1fr;
+    }
+
+    .tt-read-lane {
+        min-height: 180px;
+    }
+
+}
+
+/* ----------------------------------------------------------
+   19. RESPONSIVE DESIGN — MOBILE
+   ---------------------------------------------------------- */
+
+@media (max-width: 768px) {
+
+    .tt-shell {
+        display: block;
+    }
+
+    .tt-sidebar {
+        position: relative;
+
+        width: 100%;
+        min-width: 0;
+        height: auto;
+
+        padding: 17px 20px;
+
+        border-right: none;
+        border-bottom: 1px solid var(--tt-border);
+    }
+
+    .tt-brand {
+        margin: 0 0 18px;
+    }
+
+    .tt-brand-symbol {
+        width: 36px;
+        height: 36px;
+    }
+
+    .tt-sidebar-section {
+        display: none;
+    }
+
+    .tt-navigation {
+        flex-direction: row;
+        flex-wrap: wrap;
+
+        gap: 8px;
+    }
+
+    .tt-navigation a {
+        min-height: 39px;
+        padding: 9px 12px;
+
+        font-size: 12px;
+    }
+
+    .tt-sidebar-bottom {
+        display: none;
+    }
+
+    .tt-topbar {
+        min-height: 65px;
+
+        padding: 13px 20px;
+
+        flex-wrap: wrap;
+    }
+
+    .tt-topbar-label {
+        font-size: 11px;
+    }
+
+    .tt-view-switcher {
+        gap: 7px;
+    }
+
+    .tt-view-switcher label {
+        font-size: 11px;
+    }
+
+    .tt-view-switcher select {
+        min-width: 145px;
+        max-width: 175px;
+
+        font-size: 11px;
+    }
+
+    .tt-main-content {
+        padding: 25px 18px 55px;
+    }
+
+    .tt-read-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .tt-read-header > div {
+        min-width: 0;
+    }
+
+    .tt-read-header h1 {
+        font-size: 27px;
+    }
+
+    .tt-read-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .tt-read-stat {
+        min-height: 145px;
+    }
+
+    .tt-read-panel {
+        padding: 22px;
+    }
+
+    .tt-read-section {
+        margin-bottom: 35px;
+    }
+
+    .tt-read-attention-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .tt-read-section-header {
+        align-items: flex-start;
+    }
+
+}
+
+/* ----------------------------------------------------------
+   20. ACCESSIBILITY
+   ---------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+    }
+
+}

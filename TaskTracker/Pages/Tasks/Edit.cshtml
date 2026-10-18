@@ -1,0 +1,159 @@
+@page "{id:int}"
+@model TaskTracker.Pages.Tasks.EditModel
+
+@{
+    ViewData["Title"] = "Edit Task";
+}
+
+<div class="container mt-5 mb-5">
+
+    <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-4">
+
+        <div>
+            <h1 class="fw-bold mb-2">Edit Task</h1>
+            <p class="text-muted mb-0">
+                @Model.TaskItem.Title
+            </p>
+        </div>
+
+        <a asp-page="./Index"
+           class="btn btn-outline-secondary">
+            ← All Tasks
+        </a>
+
+    </div>
+
+
+    <div class="card shadow-sm">
+
+        <div class="card-body p-4">
+
+            <form method="post">
+
+                <div asp-validation-summary="All"
+                     class="text-danger mb-3"></div>
+
+
+                <div class="mb-3">
+
+                    <label asp-for="TaskItem.Title"
+                           class="form-label">
+                        Task Name
+                    </label>
+
+                    <input asp-for="TaskItem.Title"
+                           class="form-control" />
+
+                    <span asp-validation-for="TaskItem.Title"
+                          class="text-danger"></span>
+
+                </div>
+
+
+                <div class="mb-3">
+
+                    <label asp-for="TaskItem.Description"
+                           class="form-label">
+                        Description
+                    </label>
+
+                    <textarea asp-for="TaskItem.Description"
+                              class="form-control"
+                              rows="4"></textarea>
+
+                    <span asp-validation-for="TaskItem.Description"
+                          class="text-danger"></span>
+
+                </div>
+
+
+                <div class="row">
+
+                    <div class="col-md-6 mb-3">
+
+                        <label asp-for="TaskItem.Priority"
+                               class="form-label">
+                            Priority
+                        </label>
+
+                        <select asp-for="TaskItem.Priority"
+                                class="form-select">
+
+                            <option value="Low">Low</option>
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+
+                        </select>
+
+                        <span asp-validation-for="TaskItem.Priority"
+                              class="text-danger"></span>
+
+                    </div>
+
+
+                    <div class="col-md-6 mb-3">
+
+                        <label asp-for="TaskItem.Status"
+                               class="form-label">
+                            Status
+                        </label>
+
+                        <select asp-for="TaskItem.Status"
+                                class="form-select">
+
+                            <option value="To Do">To Do</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Completed">Completed</option>
+
+                        </select>
+
+                        <span asp-validation-for="TaskItem.Status"
+                              class="text-danger"></span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="mb-4">
+
+                    <label asp-for="TaskItem.DueDate"
+                           class="form-label">
+                        Due Date
+                    </label>
+
+                    <input asp-for="TaskItem.DueDate"
+                           type="date"
+                           class="form-control" />
+
+                    <span asp-validation-for="TaskItem.DueDate"
+                          class="text-danger"></span>
+
+                </div>
+
+
+                <div class="d-flex gap-2 flex-wrap">
+
+                    <button type="submit"
+                            class="btn btn-primary px-4">
+                        Save Changes
+                    </button>
+
+                    <a asp-page="./Index"
+                       class="btn btn-outline-secondary">
+                        Cancel
+                    </a>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

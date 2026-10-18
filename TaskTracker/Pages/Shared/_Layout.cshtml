@@ -1,0 +1,158 @@
+﻿@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostingEnvironment
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0" />
+
+    <title>@ViewData["Title"] | TaskTracker</title>
+
+    <link rel="stylesheet"
+          href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+
+    <link rel="stylesheet"
+          href="~/css/site.css"
+          asp-append-version="true" />
+</head>
+
+<body class="tt-app">
+
+    <div class="tt-shell">
+
+        <aside class="tt-sidebar">
+
+            <a asp-page="/Index"
+               class="tt-brand">
+
+                <div class="tt-brand-symbol">
+                    T
+                </div>
+
+                <span>TaskTracker</span>
+
+            </a>
+
+
+            <div class="tt-sidebar-section">
+                WORKSPACE
+            </div>
+
+
+            <nav class="tt-navigation"
+                 aria-label="Main navigation">
+
+                <a asp-page="/Index">
+                    Dashboard
+                </a>
+
+                <a asp-page="/Tasks/Index">
+                    Tasks
+                </a>
+
+            </nav>
+
+
+            <div class="tt-sidebar-bottom">
+
+                <div class="tt-workspace-indicator">
+
+                    <div class="tt-workspace-avatar">
+                        W
+                    </div>
+
+                    <div>
+                        <strong>Workspace</strong>
+                        <small>Demo Workspace</small>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </aside>
+
+
+        <div class="tt-main-area">
+
+            <header class="tt-topbar">
+
+                <div class="tt-topbar-label">
+                    TaskTracker / Workspace
+                </div>
+
+
+                @if (HostingEnvironment.IsDevelopment())
+                {
+                    var previewRole =
+                        Context.Request.Cookies["TaskTrackerPreviewRole"]
+                        ?? "Member";
+
+                    if (previewRole is not ("Member" or "Manager" or "Owner"))
+                    {
+                        previewRole = "Member";
+                    }
+
+                    <form method="post"
+                          asp-page="/Index"
+                          asp-page-handler="SwitchView"
+                          class="tt-view-switcher">
+
+                        <label for="previewRole">
+                            View as
+                        </label>
+
+                        <select id="previewRole"
+                                name="selectedView"
+                                onchange="this.form.requestSubmit()">
+
+                            <option value="Member"
+                                    selected="@(previewRole == "Member")">
+                                Team Member
+                            </option>
+
+                            <option value="Manager"
+                                    selected="@(previewRole == "Manager")">
+                                Department Manager
+                            </option>
+
+                            <option value="Owner"
+                                    selected="@(previewRole == "Owner")">
+                                Workspace Owner
+                            </option>
+
+                        </select>
+
+                    </form>
+                }
+
+            </header>
+
+
+            <main class="tt-main-content"
+                  id="main-content">
+
+                @RenderBody()
+
+            </main>
+
+        </div>
+
+    </div>
+
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script src="~/js/site.js"
+            asp-append-version="true"></script>
+
+    @await RenderSectionAsync("Scripts", required: false)
+
+</body>
+
+</html>

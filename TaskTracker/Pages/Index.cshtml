@@ -1,0 +1,383 @@
+﻿@page
+@model TaskTracker.Pages.IndexModel
+
+@{
+    ViewData["Title"] = "Dashboard";
+
+    var dashboardTitle = Model.IsOwner
+        ? "Business Overview"
+        : Model.IsManager
+            ? "Team Dashboard"
+            : "My Dashboard";
+
+    var dashboardDescription = Model.IsOwner
+        ? "A summary of tasks and progress across the workspace."
+        : Model.IsManager
+            ? "Track outstanding work, deadlines and team priorities."
+            : "Your tasks, priorities and progress in one place.";
+
+    var statuses = new[]
+    {
+        "To Do",
+        "In Progress",
+        "Completed"
+    };
+}
+
+<div class="tt-readable-dashboard">
+
+    <header class="tt-read-header">
+
+        <div>
+            <div class="tt-read-kicker">
+                TASKTRACKER / DASHBOARD
+            </div>
+
+            <h1>@dashboardTitle</h1>
+
+            <p>@dashboardDescription</p>
+        </div>
+
+        <a asp-page="/Tasks/Index"
+           class="tt-primary-button">
+            Manage Tasks →
+        </a>
+
+    </header>
+
+
+    <div class="tt-read-notice">
+        <strong>Demo Workspace</strong>
+        <span>
+            Figures currently reflect all tasks in the workspace.
+        </span>
+    </div>
+
+
+    <section class="tt-read-section">
+
+        <div class="tt-read-section-header">
+            <div>
+                <span class="tt-read-section-number">01</span>
+                <h2>Overview</h2>
+                <p>Current task activity</p>
+            </div>
+        </div>
+
+        <div class="tt-read-stats">
+
+            @if (Model.IsMember)
+            {
+                <div class="tt-read-stat">
+                    <span class="tt-read-stat-label">To Do</span>
+                    <strong>@Model.ToDoTasks</strong>
+                    <small>Not yet started</small>
+                </div>
+
+                <div class="tt-read-stat">
+                    <span class="tt-read-stat-label">In Progress</span>
+                    <strong>@Model.InProgressTasks</strong>
+                    <small>Currently underway</small>
+                </div>
+
+                <div class="tt-read-stat">
+                    <span class="tt-read-stat-label">Completed</span>
+                    <strong>@Model.CompletedTasks</strong>
+                    <small>Finished tasks</small>
+                </div>
+
+                <div class="tt-read-stat">
+                    <span class="tt-read-stat-label">Completion Rate</span>
+                    <strong>@(Model.CompletionPercentage)%</strong>
+                    <small>Overall progress</small>
+                </div>
+            }
+
+            @if (Model.IsManager)
+            {
+                <div class="tt-read-stat">
+                    <span class="tt-read-stat-label">Open Tasks</span>
+                    <strong>
+                        @(Model.ToDoTasks + Model.InProgressTasks)
+                    </strong>
+                    <small>Awaiting completion</small>
+                </div>
+
+                <div class="tt-read-stat">
+                    <span class="tt-read-stat-label">High Priority</span>
+                    <strong>@Model.HighPriorityTasks</strong>
+                    <small>Important outstanding work</small>
+                </div>
+
+                <div class="tt-read-stat">
+                    <span class="tt-read-stat-label">Overdue</span>
+                    <strong>@Model.OverdueTasks</strong>
+                    <small>Past their due date</small>
+                </div>
+
+                <div class="tt-read-stat">
+                    <span class="tt-read-stat-label">Completed</span>
+                    <strong>@Model.CompletedTasks</strong>
+                    <small>Finished tasks</small>
+                </div>
+            }
+
+            @if (Model.IsOwner)
+            {
+                <div class="tt-read-stat">
+                    <span class="tt-read-stat-label">Total Tasks</span>
+                    <strong>@Model.TotalTasks</strong>
+                    <small>All recorded tasks</small>
+                </div>
+
+                <div class="tt-read-stat">
+                    <span class="tt-read-stat-label">Outstanding</span>
+                    <strong>
+                        @(Model.TotalTasks - Model.CompletedTasks)
+                    </strong>
+                    <small>Remaining work</small>
+                </div>
+
+                <div class="tt-read-stat">
+                    <span class="tt-read-stat-label">Completed</span>
+                    <strong>@Model.CompletedTasks</strong>
+                    <small>Finished tasks</small>
+                </div>
+
+                <div class="tt-read-stat">
+                    <span class="tt-read-stat-label">Completion Rate</span>
+                    <strong>@(Model.CompletionPercentage)%</strong>
+                    <small>Overall progress</small>
+                </div>
+            }
+
+        </div>
+
+    </section>
+
+
+    <section class="tt-read-section">
+
+        <div class="tt-read-section-header">
+            <div>
+                <span class="tt-read-section-number">02</span>
+
+                @if (Model.IsManager)
+                {
+                    <h2>Priority Tasks</h2>
+                    <p>Outstanding work requiring attention</p>
+                }
+
+                @if (Model.IsMember || Model.IsOwner)
+                {
+                    <h2>Task Completion</h2>
+                    <p>Overall progress</p>
+                }
+            </div>
+        </div>
+
+
+        @if (Model.IsMember || Model.IsOwner)
+        {
+            <div class="tt-read-panel">
+
+                <div class="tt-read-progress-top">
+                    <div>
+                        <h3>Completion Progress</h3>
+
+                        <p>
+                            @Model.CompletedTasks of
+                            @Model.TotalTasks tasks completed
+                        </p>
+                    </div>
+
+                    <strong>
+                        @(Model.CompletionPercentage)%
+                    </strong>
+                </div>
+
+                <div class="tt-read-progress-track"
+                     role="progressbar"
+                     aria-label="Task completion"
+                     aria-valuenow="@Model.CompletionPercentage"
+                     aria-valuemin="0"
+                     aria-valuemax="100">
+
+                    <div class="tt-read-progress-fill"
+                         style="width: @(Model.CompletionPercentage)%">
+                    </div>
+                </div>
+
+                <div class="tt-read-progress-footer">
+                    <span>0%</span>
+                    <span>100%</span>
+                </div>
+
+            </div>
+        }
+
+
+        @if (Model.IsManager)
+        {
+            <div class="tt-read-panel">
+
+                @if (!Model.AttentionTasks.Any())
+                {
+                    <div class="tt-read-empty">
+                        <strong>All caught up</strong>
+
+                        <p>
+                            No high-priority or overdue tasks.
+                        </p>
+                    </div>
+                }
+
+                @foreach (var task in Model.AttentionTasks)
+                {
+                    <div class="tt-read-attention-item">
+
+                        <div class="tt-read-attention-main">
+
+                            <strong>@task.Title</strong>
+
+                            <div class="tt-read-attention-details">
+
+                                <span class="tt-read-priority @(task.Priority.ToLowerInvariant())">
+                                    @task.Priority
+                                </span>
+
+                                <span>@task.Status</span>
+
+                                <span>
+                                    Due:
+                                    @(task.DueDate?.ToString("dd MMM yyyy") ?? "Not set")
+                                </span>
+
+                            </div>
+                        </div>
+
+                        <a asp-page="/Tasks/Edit"
+                           asp-route-id="@task.Id"
+                           class="tt-read-action-link">
+                            Edit Task →
+                        </a>
+
+                    </div>
+                }
+
+            </div>
+        }
+
+    </section>
+
+
+    <section class="tt-read-section">
+
+        <div class="tt-read-section-header tt-read-board-header">
+
+            <div>
+                <span class="tt-read-section-number">03</span>
+
+                <h2>Tasks by Status</h2>
+
+                <p>
+                    Current workload
+                </p>
+            </div>
+
+            <a asp-page="/Tasks/Index"
+               class="tt-read-action-link">
+                View All Tasks →
+            </a>
+
+        </div>
+
+
+        <div class="tt-read-board">
+
+            @foreach (var status in statuses)
+            {
+                var tasks = Model.Tasks
+                    .Where(t => t.Status == status)
+                    .ToList();
+
+                var laneClass = status switch
+                {
+                    "To Do" => "todo",
+                    "In Progress" => "active",
+                    _ => "complete"
+                };
+
+                <div class="tt-read-lane">
+
+                    <div class="tt-read-lane-header">
+
+                        <div class="tt-read-lane-title">
+
+                            <span class="tt-status-dot @laneClass"></span>
+
+                            <h3>@status</h3>
+
+                        </div>
+
+                        <span class="tt-read-count">
+                            @tasks.Count
+                        </span>
+
+                    </div>
+
+
+                    <div class="tt-read-lane-content">
+
+                        @foreach (var task in tasks)
+                        {
+                            <article class="tt-read-task">
+
+                                <div class="tt-read-task-top">
+
+                                    <span class="tt-read-priority @(task.Priority.ToLowerInvariant())">
+                                        @task.Priority
+                                    </span>
+
+                                </div>
+
+                                <h4>@task.Title</h4>
+
+                                @if (!string.IsNullOrWhiteSpace(task.Description))
+                                {
+                                    <p>@task.Description</p>
+                                }
+
+                                <div class="tt-read-task-footer">
+
+                                    <span>
+                                        @(task.DueDate?.ToString("dd MMM yyyy") ?? "No due date")
+                                    </span>
+
+                                    <a asp-page="/Tasks/Edit"
+                                       asp-route-id="@task.Id">
+                                        Edit →
+                                    </a>
+
+                                </div>
+
+                            </article>
+                        }
+
+                        @if (tasks.Count == 0)
+                        {
+                            <div class="tt-read-lane-empty">
+                                No tasks
+                            </div>
+                        }
+
+                    </div>
+
+                </div>
+            }
+
+        </div>
+
+    </section>
+
+</div>
