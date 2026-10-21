@@ -61,7 +61,7 @@ public class IndexModel : PageModel
             return NotFound();
         }
 
-        task.Status = "Completed";
+        task.Status = "In Progress"; // SEEDED FAULT
 
         await _context.SaveChangesAsync();
 
