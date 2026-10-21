@@ -6,7 +6,10 @@ namespace TaskTracker.E2ETests.Infrastructure;
 ///   E2E_BASE_URL         required, e.g. http://localhost:5075 or http://&lt;staging-host&gt;
 ///   E2E_BROWSER_CHANNEL  optional, e.g. "chrome" or "msedge" to use an installed browser
 ///   E2E_HEADED           optional, "1" shows the browser window (local debugging)
-///   E2E_ARTIFACTS_DIR    optional, where failure screenshots/traces are written
+///   E2E_ARTIFACTS_DIR    optional, where failure screenshots/traces/latency results are written
+///   E2E_HEALTH_PATH      optional, health endpoint path (default /health; brief target is /healthz)
+///   E2E_EXPECTED_COMMIT  optional, commit SHA the deployed /version must report (set by the pipeline)
+///   SMOKE_P95_MS         optional, latency target for the smoke sample (default 500 ms, Brief §5.2)
 /// </summary>
 public static class E2ESettings
 {
@@ -32,4 +35,17 @@ public static class E2ESettings
     // Unique per pipeline run (GitHub run number) or per local run, used in task titles: E2E-<run>-...
     public static string RunId { get; } =
         Environment.GetEnvironmentVariable("GITHUB_RUN_NUMBER") ?? DateTime.UtcNow.ToString("HHmmss");
+
+    public static string HealthPath
+        => Environment.GetEnvironmentVariable("E2E_HEALTH_PATH") is { Length: > 0 } path ? path : "/health";
+
+    public static string? ExpectedCommit
+        => Environment.GetEnvironmentVariable("E2E_EXPECTED_COMMIT") is { Length: > 0 } sha ? sha.Trim() : null;
+
+    public static int SmokeP95Milliseconds
+        => int.TryParse(Environment.GetEnvironmentVariable("SMOKE_P95_MS"), out var ms) ? ms : 500;
+
+    // Label for the smoke-test task: SMOKE-<short commit> in the pipeline, SMOKE-<run id> locally.
+    public static string SmokeLabel
+        => ExpectedCommit is { } sha ? sha[..Math.Min(7, sha.Length)] : RunId;
 }

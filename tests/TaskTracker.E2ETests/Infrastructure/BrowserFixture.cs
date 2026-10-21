@@ -45,13 +45,13 @@ public sealed class BrowserFixture : IAsyncLifetime
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         try
         {
-            var response = await http.GetAsync($"{E2ESettings.BaseUrl}/health");
+            var response = await http.GetAsync($"{E2ESettings.BaseUrl}{E2ESettings.HealthPath}");
             response.EnsureSuccessStatusCode();
         }
         catch (Exception ex)
         {
             throw new InvalidOperationException(
-                $"TaskTracker is not reachable at {E2ESettings.BaseUrl}/health. " +
+                $"TaskTracker is not reachable at {E2ESettings.BaseUrl}{E2ESettings.HealthPath}. " +
                 "Start the app first (locally: dotnet run --project TaskTracker --launch-profile http).", ex);
         }
     }

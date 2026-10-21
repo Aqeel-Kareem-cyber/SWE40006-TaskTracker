@@ -9,6 +9,7 @@ namespace TaskTracker.E2ETests;
 /// create, view, complete and delete - plus edit and title validation - driven through
 /// a real Chromium browser against a running TaskTracker (E2E_BASE_URL).
 /// </summary>
+[Trait("Category", "E2E")]
 public class TaskWorkflowTests(BrowserFixture browser) : E2ETestBase(browser)
 {
     [E2EFact]
