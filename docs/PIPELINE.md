@@ -178,14 +178,16 @@ Restoring the database is a separate step from restarting the old image. A relea
 
 ## 7. Agreements with the rest of the group
 
-Hamza (tests):
-- Unit and in-process integration projects: name them `*Tests.csproj` (for example `tests/TaskTracker.Tests/TaskTracker.Tests.csproj`) and reference `coverlet.msbuild`. CI runs them before the image is built.
-- Staging and browser projects: put `E2E`, `Staging` or `Playwright` in the project name. CI runs them after the staging deploy with `TASKTRACKER_BASE_URL`, `EXPECTED_COMMIT` and `E2E_RUN_PREFIX` set. Browser installation is handled by the workflow.
-- Write Playwright traces to a `playwright-traces/` folder so they are uploaded.
+Hamza (tests): his suites live on `feature/testing`, merged into this branch.
+- Build and test job: `dotnet tool restore`, then `dotnet test /p:CollectCoverage=true` from the repository root (`TaskTracker.slnx`). The SDK comes from `global.json` (10.0.400). The 80% line / 70% branch gate is set in `TaskTracker.IntegrationTests.csproj`, so the job fails if coverage drops. ReportGenerator writes `coverage/report/`, which is uploaded as an artifact and summarised on the run page.
+- Image job: builds `tests/Dockerfile.tests` next to the app image and pushes it as `ghcr.io/aqeel-kareem-cyber/tasktracker-tests:sha-<commit>`.
+- Staging tests job: runs that test-runner image with `E2E_BASE_URL` set to `STAGING_URL`, `E2E_EXPECTED_COMMIT` set to the commit and `E2E_HEALTH_PATH=/healthz`. A non-zero exit blocks production. TRX reports, Playwright traces and `latency.json` are uploaded as `staging-results-<sha>`.
+- Production: after `scripts/smoke.sh`, the same image runs with `--filter Category=Smoke` against `PRODUCTION_URL`. If either check fails, the job rolls back to the previous release.
+- The test-runner image runs on the GitHub runner and reaches the servers over port 80, rather than on the staging host through SSM. The tests and image are the same, and the results go straight into the run's artifacts without copying files back from the host.
 
 Aqeel (application): the `feature/cicd` branch makes two small changes to `Program.cs` that the pipeline depends on. Please review them in the pull request.
 - `/version` returns `{"commit": "<APP_VERSION>", "environment": "<name>"}`. `APP_VERSION` is set to the commit SHA when the image is built.
-- `/health` now includes a `database` check that queries the Tasks table (package `Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore` 10.0.13), so `Healthy` means the SQLite file and schema are usable.
+- `/healthz` (the path in the brief) and `/health` both run the same checks, including a `database` check that queries the Tasks table (package `Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore` 10.0.13), so `Healthy` means the SQLite file and schema are usable.
 - The container sets `ASPNETCORE_HTTP_PORTS=8080` and `ConnectionStrings__DefaultConnection`; please keep reading the connection string from configuration.
 
 Jinxi (AWS): section 4.2, plus the CloudWatch agent for memory and disk metrics and the CPU alarm.

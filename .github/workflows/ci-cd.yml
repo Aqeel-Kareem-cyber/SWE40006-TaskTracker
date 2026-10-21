@@ -1,7 +1,8 @@
 # TaskTracker CI/CD pipeline (SWE40006)
 #
-#   push to main ─► build & test ─► image (build, container test, push to GHCR)
-#                   ─► deploy staging ─► staging tests ─► deploy production ─► production smoke
+#   push to main ─► build & test ─► images (app + test runner, container test, push to GHCR)
+#                   ─► deploy staging ─► staging tests (test-runner image) ─► deploy production
+#                   ─► production smoke (smoke.sh + test-runner Category=Smoke) ─► rollback on failure
 #
 # Pull requests run build & test and the image job without pushing or deploying.
 # Production is deployed automatically once staging passes (no manual approval).
@@ -47,7 +48,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  DOTNET_VERSION: "10.0.x"
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
   APP_PROJECT: TaskTracker/TaskTracker.csproj
@@ -61,89 +61,54 @@ jobs:
     name: Build and test
     if: github.event.inputs.redeploy_sha == ''
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
+      # SDK pinned by global.json (10.0.400, latest patch).
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          global-json-file: global.json
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'global.json') }}
           restore-keys: nuget-${{ runner.os }}-
 
-      - name: Find projects
-        id: projects
-        shell: bash
+      - name: Restore local tools (ReportGenerator)
+        run: dotnet tool restore
+
+      - name: Build, unit and integration tests with coverage gate
+        # Runs TaskTracker.slnx from the repository root. The 80% line / 70% branch gate is set
+        # in the integration test project, so this step fails if coverage drops. The browser and
+        # smoke tests skip themselves here because E2E_BASE_URL is not set.
         run: |
-          # Unit and component-integration test projects: *Tests.csproj, excluding
-          # browser/staging suites (*E2E* / *Staging*), which run after deployment.
-          tests="$(find . -name '*Tests.csproj' -not -path '*/bin/*' -not -path '*/obj/*' \
-                   | grep -viE 'e2e|staging|playwright' | sort | tr '\n' ' ' || true)"
-          echo "tests=${tests}" >> "$GITHUB_OUTPUT"
-          echo "Test projects: ${tests:-none found}"
-
-      - name: Restore
-        run: |
-          dotnet restore "$APP_PROJECT"
-          for p in ${{ steps.projects.outputs.tests }}; do dotnet restore "$p"; done
-
-      - name: Build
-        run: dotnet build "$APP_PROJECT" --configuration Release --no-restore
-
-      - name: Unit and integration tests with coverage gate
-        if: steps.projects.outputs.tests != ''
-        shell: bash
-        run: |
-          # Coverage gate from the Project Brief: 80% line and 70% branch (total).
-          # Uses coverlet.msbuild (referenced by the test projects). Thresholds
-          # can be overridden with the COVERAGE_LINE / COVERAGE_BRANCH variables.
-          status=0
-          for p in ${{ steps.projects.outputs.tests }}; do
-            name="$(basename "$p" .csproj)"
-            dotnet test "$p" --configuration Release --no-restore \
-              --logger "trx;LogFileName=${name}.trx" \
-              --results-directory TestResults \
-              /p:CollectCoverage=true \
-              /p:CoverletOutputFormat=cobertura \
-              /p:CoverletOutput="$GITHUB_WORKSPACE/coverage/${name}/" \
-              /p:Threshold=${{ vars.COVERAGE_LINE || '80' }}%2c${{ vars.COVERAGE_BRANCH || '70' }} \
-              /p:ThresholdType=line%2cbranch \
-              /p:ThresholdStat=total \
-              /p:ExcludeByFile="**/Migrations/*.cs%2c**/Program.cs" \
-              || status=1
-          done
-          exit $status
-
-      - name: No test projects yet
-        if: steps.projects.outputs.tests == ''
-        run: echo "::warning::No *Tests.csproj found. Build passed but no tests ran."
+          dotnet test /p:CollectCoverage=true \
+            --logger "trx" \
+            --results-directory TestResults
 
       - name: Coverage report
-        if: always() && steps.projects.outputs.tests != ''
+        if: always()
         shell: bash
         run: |
-          if ls coverage/*/coverage.cobertura.xml >/dev/null 2>&1; then
-            dotnet tool install --global dotnet-reportgenerator-globaltool >/dev/null
-            reportgenerator -reports:"coverage/*/coverage.cobertura.xml" \
+          if [ -f coverage/coverage.cobertura.xml ]; then
+            dotnet reportgenerator -reports:coverage/coverage.cobertura.xml \
               -targetdir:coverage/report -reporttypes:"Html;MarkdownSummaryGithub"
             cat coverage/report/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "No coverage files produced (is coverlet.msbuild referenced by the test projects?)"
+            echo "No coverage file was produced."
           fi
 
-      - name: Upload test results and coverage
+      - name: Upload test results and coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results-${{ github.sha }}
           path: |
             TestResults/
-            coverage/
+            coverage/report/
           retention-days: 30
           if-no-files-found: ignore
 
@@ -159,6 +124,7 @@ jobs:
     outputs:
       image: ${{ steps.ref.outputs.image }}
       repo: ${{ steps.ref.outputs.repo }}
+      tests_image: ${{ steps.ref.outputs.tests_image }}
     steps:
       - uses: actions/checkout@v4
 
@@ -168,8 +134,12 @@ jobs:
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"   # GHCR names must be lower case
           repo="ghcr.io/${owner}/${IMAGE_NAME}"
-          echo "repo=${repo}" >> "$GITHUB_OUTPUT"
-          echo "image=${repo}:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          {
+            echo "repo=${repo}"
+            echo "image=${repo}:sha-${GITHUB_SHA}"
+            echo "tests_repo=ghcr.io/${owner}/tasktracker-tests"
+            echo "tests_image=ghcr.io/${owner}/tasktracker-tests:sha-${GITHUB_SHA}"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -182,8 +152,8 @@ jobs:
           push: false
           build-args: GIT_SHA=${{ github.sha }}
           tags: ${{ steps.ref.outputs.image }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,mode=max,scope=app
 
       - name: Container test (start, health, version, persistence across replacement)
         shell: bash
@@ -244,6 +214,20 @@ jobs:
           format: table
           exit-code: "0"
 
+      - name: Build test-runner image (tests/Dockerfile.tests)
+        # Same commit, built next to the app image. Contains the test suites, the .NET SDK and
+        # Playwright Chromium. The staging and production test jobs run it against the deployed app.
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: tests/Dockerfile.tests
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ steps.ref.outputs.tests_image }}
+          cache-from: type=gha,scope=tests
+          cache-to: type=gha,mode=max,scope=tests
+
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
@@ -257,6 +241,7 @@ jobs:
         shell: bash
         env:
           REPO: ${{ steps.ref.outputs.repo }}
+          TESTS_REPO: ${{ steps.ref.outputs.tests_repo }}
         run: |
           set -euo pipefail
           short="${GITHUB_SHA::7}"
@@ -265,11 +250,14 @@ jobs:
           docker push "${REPO}:sha-${GITHUB_SHA}"
           docker push "${REPO}:sha-${short}"
           docker push "${REPO}:main"
+          docker push "${TESTS_REPO}:sha-${GITHUB_SHA}"
           digest="$(docker image inspect -f '{{index .RepoDigests 0}}' "${REPO}:sha-${GITHUB_SHA}")"
+          tests_digest="$(docker image inspect -f '{{index .RepoDigests 0}}' "${TESTS_REPO}:sha-${GITHUB_SHA}")"
           {
-            echo "### Image published"
-            echo "- Tags: \`sha-${GITHUB_SHA}\`, \`sha-${short}\`, \`main\`"
-            echo "- Digest: \`${digest}\`"
+            echo "### Images published"
+            echo "- App tags: \`sha-${GITHUB_SHA}\`, \`sha-${short}\`, \`main\`"
+            echo "- App digest: \`${digest}\`"
+            echo "- Test-runner digest: \`${tests_digest}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
@@ -326,7 +314,10 @@ jobs:
     name: Staging smoke and end-to-end tests
     needs: [image, deploy-staging]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
 
@@ -335,52 +326,29 @@ jobs:
         env:
           OUT_DIR: smoke-results/staging
 
-      - name: Find end-to-end test projects
-        id: e2e
-        shell: bash
-        run: |
-          projects="$(find . -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' \
-                      | grep -iE 'e2e|staging|playwright' | sort | tr '\n' ' ' || true)"
-          echo "projects=${projects}" >> "$GITHUB_OUTPUT"
-          echo "End-to-end projects: ${projects:-none found}"
-
-      - uses: actions/setup-dotnet@v4
-        if: steps.e2e.outputs.projects != ''
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build end-to-end tests and install Chromium
-        if: steps.e2e.outputs.projects != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          for p in ${{ steps.e2e.outputs.projects }}; do
-            dotnet build "$p" --configuration Release
-            dir="$(dirname "$p")"
-            script="$(find "$dir/bin/Release" -name playwright.ps1 | head -1 || true)"
-            if [ -n "$script" ]; then pwsh "$script" install --with-deps chromium; fi
-          done
-
-      - name: Run staging integration and Playwright tests
-        if: steps.e2e.outputs.projects != ''
+      - name: Run all test suites against staging (test-runner image)
+        # Integration, Playwright browser and smoke suites from tests/Dockerfile.tests, pointed at
+        # the staging server. A non-zero exit code fails this job, so production is not deployed.
         shell: bash
         env:
-          # The test projects read the deployed site's address from this variable.
-          TASKTRACKER_BASE_URL: ${{ vars.STAGING_URL }}
-          EXPECTED_COMMIT: ${{ github.sha }}
-          E2E_RUN_PREFIX: E2E-${{ github.run_number }}-
+          TESTS_IMAGE: ${{ needs.image.outputs.tests_image }}
+          STAGING_URL: ${{ vars.STAGING_URL }}
         run: |
-          status=0
-          for p in ${{ steps.e2e.outputs.projects }}; do
-            name="$(basename "$p" .csproj)"
-            dotnet test "$p" --configuration Release --no-build \
-              --logger "trx;LogFileName=${name}.trx" --results-directory TestResults || status=1
-          done
-          exit $status
-
-      - name: No end-to-end tests yet
-        if: steps.e2e.outputs.projects == ''
-        run: echo "::warning::No E2E/Playwright test project found. Staging was checked by the smoke test only."
+          mkdir -p test-results
+          docker run --rm \
+            -e E2E_BASE_URL="$STAGING_URL" \
+            -e E2E_EXPECTED_COMMIT="$GITHUB_SHA" \
+            -e E2E_HEALTH_PATH=/healthz \
+            -e GITHUB_RUN_NUMBER \
+            -v "$PWD/test-results:/results" \
+            "$TESTS_IMAGE"
 
       - name: Upload staging evidence
         if: always()
@@ -389,8 +357,7 @@ jobs:
           name: staging-results-${{ github.sha }}
           path: |
             smoke-results/
-            TestResults/
-            **/playwright-traces/
+            test-results/
           retention-days: 30
           if-no-files-found: ignore
 
@@ -457,8 +424,35 @@ jobs:
         env:
           OUT_DIR: smoke-results/production
 
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Production smoke suite (test-runner image, Category=Smoke)
+        id: smoke_tests
+        shell: bash
+        env:
+          TESTS_IMAGE: ${{ needs.image.outputs.tests_image }}
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          mkdir -p smoke-results/production-tests
+          docker run --rm --entrypoint dotnet \
+            -e E2E_BASE_URL="$PRODUCTION_URL" \
+            -e E2E_EXPECTED_COMMIT="$GITHUB_SHA" \
+            -e E2E_HEALTH_PATH=/healthz \
+            -e E2E_ARTIFACTS_DIR=/results \
+            -e GITHUB_RUN_NUMBER \
+            -v "$PWD/smoke-results/production-tests:/results" \
+            "$TESTS_IMAGE" \
+            test /src/tests/TaskTracker.E2ETests/TaskTracker.E2ETests.csproj \
+              -c Release --no-build --filter "Category=Smoke" \
+              --logger trx --results-directory /results
+
       - name: Roll back to the previous release
-        if: failure() && steps.deploy.outcome == 'success' && steps.smoke.outcome == 'failure' && steps.before.outputs.sha != ''
+        if: failure() && steps.deploy.outcome == 'success' && (steps.smoke.outcome == 'failure' || steps.smoke_tests.outcome == 'failure') && steps.before.outputs.sha != ''
         uses: ./.github/actions/deploy
         with:
           method: ${{ env.DEPLOY_METHOD }}
@@ -479,7 +473,7 @@ jobs:
         shell: bash
         env:
           COMMIT_TIME: ${{ github.event.head_commit.timestamp }}
-          OUTCOME: ${{ steps.smoke.outcome }}
+          OUTCOME: ${{ (steps.smoke.outcome == 'success' && steps.smoke_tests.outcome == 'success') && 'success' || 'failure' }}
           IMAGE: ${{ needs.image.outputs.image }}
           PREVIOUS: ${{ steps.before.outputs.sha }}
         run: |

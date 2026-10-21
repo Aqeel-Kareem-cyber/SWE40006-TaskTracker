@@ -57,8 +57,11 @@ app.MapStaticAssets();
 app.MapRazorPages()
    .WithStaticAssets();
 
-// Health check endpoint
+// Health check endpoints. /healthz is the path named in the Project Brief;
+// /health is kept for existing scripts and tests. Both run the same checks,
+// including the database query.
 app.MapHealthChecks("/health");
+app.MapHealthChecks("/healthz");
 
 // Release identification: the commit SHA baked into the image at build time
 // (APP_VERSION), used by the pipeline to confirm which release is running.
