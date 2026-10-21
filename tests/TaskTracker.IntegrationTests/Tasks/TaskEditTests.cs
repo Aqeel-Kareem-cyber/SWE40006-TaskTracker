@@ -80,7 +80,8 @@ public class TaskEditTests(TaskTrackerFactory factory) : IntegrationTestBase(fac
 
     [Theory]
     [InlineData("", "Medium", "To Do", "Task title is required.")]
-    [InlineData("TOO_LONG", "Medium", "To Do", "Title must be between 2 and 100 characters.")]
+    [InlineData("   ", "Medium", "To Do", "Task title is required.")] // whitespace-only is empty after trimming
+    [InlineData("TOO_LONG", "Medium", "To Do", "Title must be between 1 and 100 characters.")]
     [InlineData("Valid title", "Medium", "Done", "Please select a valid status.")]
     [InlineData("Valid title", "Urgent", "To Do", "Please select a valid priority.")]
     public async Task Edit_InvalidInput_IsRejectedAndTaskIsUnchanged(
@@ -98,6 +99,17 @@ public class TaskEditTests(TaskTrackerFactory factory) : IntegrationTestBase(fac
         Assert.Equal("Original title", stored.Title);
         Assert.Equal("To Do", stored.Status);
         Assert.Equal("Low", stored.Priority);
+    }
+
+    [Fact]
+    public async Task Edit_OneCharacterTitle_IsAccepted()
+    {
+        var task = await SeedOriginalAsync();
+
+        var response = await PostEditAsync(task.Id, TaskForm.Edit(" Z "));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("Z", (await LoadAsync(task.Id)).Title);
     }
 
     [Fact]

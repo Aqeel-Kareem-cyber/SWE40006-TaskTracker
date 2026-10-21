@@ -47,6 +47,7 @@ public class TaskCreateTests(TaskTrackerFactory factory) : IntegrationTestBase(f
     }
 
     [Theory]
+    [InlineData(1)]   // Brief §1.2: 1–100 characters after trimming
     [InlineData(2)]
     [InlineData(100)]
     public async Task Create_TitleAtLengthBoundary_IsAccepted(int length)
@@ -63,7 +64,7 @@ public class TaskCreateTests(TaskTrackerFactory factory) : IntegrationTestBase(f
     {
         { "", "Task title is required." },
         { "   ", "Task title is required." },
-        { new string('a', 101), "Title must be between 2 and 100 characters." },
+        { new string('a', 101), "Title must be between 1 and 100 characters." },
     };
 
     [Theory]
@@ -121,23 +122,34 @@ public class TaskCreateTests(TaskTrackerFactory factory) : IntegrationTestBase(f
         Assert.Empty(await StoredTasksAsync());
     }
 
-    // ---- Agreed in the Project Brief (§1.2) but not yet implemented in the app ----
-    // Skipped (not deleted) so they show up in every test report until the group resolves them.
+    // ---- Trimming (Brief §1.2): whitespace is removed BEFORE length validation and storage ----
 
-    [Fact(Skip = "Pending group decision: Brief §1.2 says titles of 1–100 characters are valid; WorkTask enforces MinimumLength = 2.")]
-    public async Task Create_OneCharacterTitle_IsAccepted_PerBrief()
+    [Fact]
+    public async Task Create_TitleWithSurroundingWhitespace_IsStoredTrimmed()
     {
-        var response = await PostNewTaskAsync(TaskForm.New("A"));
+        await PostNewTaskAsync(TaskForm.New("   Trimmed title   "));
+
+        Assert.Equal("Trimmed title", Assert.Single(await StoredTasksAsync()).Title);
+    }
+
+    [Fact]
+    public async Task Create_OneCharacterSurroundedByWhitespace_IsAcceptedAsOneCharacter()
+    {
+        var response = await PostNewTaskAsync(TaskForm.New("  A  "));
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("A", Assert.Single(await StoredTasksAsync()).Title);
     }
 
-    [Fact(Skip = "Pending app fix: Brief §1.2 says titles are trimmed; Tasks/Index OnPostAsync stores them untrimmed (Edit already trims).")]
-    public async Task Create_TitleWithSurroundingWhitespace_IsStoredTrimmed_PerBrief()
+    [Fact]
+    public async Task Create_100CharactersPlusSurroundingWhitespace_IsAccepted()
     {
-        await PostNewTaskAsync(TaskForm.New("   Trimmed title   "));
+        // 104 characters as typed, but only 100 after trimming, so it is valid.
+        var title = new string('a', 100);
 
-        Assert.Equal("Trimmed title", Assert.Single(await StoredTasksAsync()).Title);
+        var response = await PostNewTaskAsync(TaskForm.New($"  {title}  "));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal(title, Assert.Single(await StoredTasksAsync()).Title);
     }
 }
