@@ -9,7 +9,7 @@ This file explains how a commit on `main` becomes a running production release, 
 ```mermaid
 flowchart LR
   dev[Developer push / PR] --> bt[Build and test<br/>unit + integration<br/>coverage gate]
-  bt --> img[Image<br/>build linux/amd64<br/>container test<br/>Trivy scan]
+  bt --> img[Image<br/>build linux/amd64<br/>container test]
   img -->|push to main| ghcr[(GHCR<br/>sha-&lt;commit&gt;)]
   ghcr --> stg[Deploy staging<br/>EC2 #1<br/>fresh database]
   stg --> st[Staging tests<br/>smoke + Playwright]
@@ -22,7 +22,7 @@ flowchart LR
 | Job | Runs on | What it does | Stops the release when |
 | --- | --- | --- | --- |
 | Build and test | every push and PR | restore, Release build, `*Tests.csproj` suites with Coverlet, ReportGenerator summary | build fails, a test fails, coverage < 80% line or < 70% branch |
-| Image | every push and PR | builds the Docker image for `linux/amd64`, starts it, checks `/health`, `/`, `/Tasks`, `/version` and the non-root user, runs the smoke script (form create and delete, latency), and checks that a task survives container replacement; Trivy scan (report only); pushes to GHCR on `main` | the image does not start or a check fails |
+| Image | every push and PR | builds the Docker image for `linux/amd64`, starts it, checks `/health`, `/`, `/Tasks`, `/version` and the non-root user, runs the smoke script (form create and delete, latency), and checks that a task survives container replacement; pushes to GHCR on `main` | the image does not start or a check fails |
 | Deploy staging | push to `main` | runs `deploy/deploy.sh` on the staging EC2 host; staging starts from an empty, freshly migrated database | the new container is not healthy or reports the wrong commit (host rolls back) |
 | Staging tests | after staging deploy | `scripts/smoke.sh` and any `*E2E*`/`*Staging*`/`*Playwright*` test projects against `STAGING_URL` | any check or test fails |
 | Deploy production | after staging tests pass | promotes the same `sha-<commit>` image; no manual approval | host health gate fails (host rolls back) |
@@ -208,5 +208,5 @@ Jinxi (AWS): section 4.2, plus the CloudWatch agent for memory and disk metrics 
 - HTTP only. No TLS certificate is configured, which is acceptable for fictional demonstration data but not for real use.
 - The app has no authentication. Anyone who can reach port 80 can create and delete tasks.
 - SQLite and a single container per host: a deployment causes a few seconds of downtime while the container is swapped.
-- The Trivy scan reports vulnerabilities but does not fail the build.
+- There is no image vulnerability scan in the pipeline.
 - Migrations run at application start-up, which suits one instance per environment only.

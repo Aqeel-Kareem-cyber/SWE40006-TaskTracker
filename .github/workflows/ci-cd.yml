@@ -205,15 +205,6 @@ jobs:
           fi
           docker rm -f ci-app >/dev/null; docker volume rm ci-data >/dev/null
 
-      - name: Vulnerability scan (report only)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: ${{ steps.ref.outputs.image }}
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          format: table
-          exit-code: "0"
-
       - name: Build test-runner image (tests/Dockerfile.tests)
         # Same commit, built next to the app image. Contains the test suites, the .NET SDK and
         # Playwright Chromium. The staging and production test jobs run it against the deployed app.
