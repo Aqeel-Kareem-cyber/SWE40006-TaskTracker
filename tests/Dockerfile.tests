@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1
+#
+# Test-runner image (Brief §4.3 job 4 "test-staging", §5.1).
+# Contains the built test suites, the .NET 10 SDK and Playwright's Chromium with its Linux
+# dependencies. The pipeline runs it ON the test/staging host, pointed at the deployed app:
+#
+#   docker run --rm --network host -e E2E_BASE_URL=http://localhost -v /srv/test-results:/results <image>
+#
+# Build from the repository root:
+#   docker build -f tests/Dockerfile.tests -t tasktracker-tests .
+
+# ---- build: restore and compile the app + all test projects -------------------------
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# Project files first so the NuGet restore layer is cached between builds.
+COPY global.json TaskTracker.slnx dotnet-tools.json ./
+COPY TaskTracker/TaskTracker.csproj TaskTracker/
+COPY tests/TaskTracker.IntegrationTests/TaskTracker.IntegrationTests.csproj tests/TaskTracker.IntegrationTests/
+COPY tests/TaskTracker.E2ETests/TaskTracker.E2ETests.csproj tests/TaskTracker.E2ETests/
+RUN dotnet restore TaskTracker.slnx
+
+COPY . .
+RUN dotnet build TaskTracker.slnx -c Release --no-restore
+
+# ---- runtime: same SDK + Chromium and its OS libraries ------------------------------
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS test-runner
+WORKDIR /src
+COPY --from=build /src /src
+
+# Install the Chromium build that matches the Microsoft.Playwright package version.
+RUN pwsh tests/TaskTracker.E2ETests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+
+# Normalise line endings (the repo is edited on Windows) and make the runner executable.
+RUN sed -i 's/\r$//' tests/run-staging-tests.sh && chmod +x tests/run-staging-tests.sh
+
+ENV E2E_ARTIFACTS_DIR=/results/playwright \
+    DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_NOLOGO=1
+
+ENTRYPOINT ["/src/tests/run-staging-tests.sh"]
