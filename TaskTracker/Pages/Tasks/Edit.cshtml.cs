@@ -38,6 +38,12 @@ public class EditModel : PageModel
     // Save changes to the task
     public async Task<IActionResult> OnPostAsync(int id)
     {
+        TaskItem.Title = (TaskItem.Title ?? string.Empty).Trim();
+
+        // Revalidate the title before saving
+        ModelState.Remove("TaskItem.Title");
+        TryValidateModel(TaskItem, nameof(TaskItem));
+
         if (!ModelState.IsValid)
         {
             return Page();
@@ -86,8 +92,8 @@ public class EditModel : PageModel
             return NotFound();
         }
 
-        // Update only the editable fields
-        existingTask.Title = TaskItem.Title.Trim();
+        // Update editable fields
+        existingTask.Title = TaskItem.Title;
         existingTask.Description = TaskItem.Description;
         existingTask.Status = TaskItem.Status;
         existingTask.Priority = TaskItem.Priority;

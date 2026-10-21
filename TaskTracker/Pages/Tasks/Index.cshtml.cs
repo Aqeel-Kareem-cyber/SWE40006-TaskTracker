@@ -32,6 +32,12 @@ public class IndexModel : PageModel
     // Create a task
     public async Task<IActionResult> OnPostAsync()
     {
+        NewTask.Title = (NewTask.Title ?? string.Empty).Trim();
+
+        // Revalidate the title after trimming whitespace
+        ModelState.Remove("NewTask.Title");
+        TryValidateModel(NewTask, nameof(NewTask));
+
         if (!ModelState.IsValid)
         {
             await OnGetAsync();
