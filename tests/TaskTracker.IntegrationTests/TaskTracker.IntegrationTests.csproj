@@ -9,6 +9,17 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
 
+  <!-- Coverage (Coverlet MSBuild, VSTest path). Off by default; CI turns it on with /p:CollectCoverage=true.
+       Report goes to <repo>/coverage/ (gitignored). Scope = business logic only, as defined in the brief:
+       Program.cs start-up, EF Core migrations and generated Razor view classes are excluded. -->
+  <PropertyGroup>
+    <CoverletOutputFormat>cobertura</CoverletOutputFormat>
+    <CoverletOutput>$(MSBuildThisFileDirectory)../../coverage/</CoverletOutput>
+    <Include>[TaskTracker]*</Include>
+    <Exclude>[TaskTracker]TaskTracker.Migrations.*,[TaskTracker]Program,[TaskTracker]AspNetCoreGeneratedDocument.*</Exclude>
+    <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+  </PropertyGroup>
+
   <ItemGroup>
     <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
