@@ -78,7 +78,7 @@ public class IndexModel : PageModel
             return NotFound();
         }
 
-        _context.Tasks.Remove(task);
+        _context.Tasks.Remove(task); _context.ChangeTracker.Clear(); // SEEDED FAULT: delete is discarded before saving
 
         await _context.SaveChangesAsync();
 
