@@ -15,9 +15,8 @@
 # Configuration (see docs/PIPELINE.md):
 #   Repository variables: DEPLOY_METHOD (ssm|ssh), AWS_REGION, STAGING_URL,
 #                         PRODUCTION_URL, LOG_GROUP_PREFIX (optional)
-#   Environment "staging" and "production":
-#     variables EC2_INSTANCE_ID (ssm) or EC2_HOST (ssh)
-#     secrets   EC2_SSH_KEY (ssh only)
+#   Also repository variables: STAGING_INSTANCE_ID, PRODUCTION_INSTANCE_ID (ssm)
+#                              or EC2_HOST, EC2_SSH_USER, secret EC2_SSH_KEY (ssh)
 #   Repository secrets: AWS_ROLE_ARN (OIDC, preferred) or
 #                       AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
 
@@ -280,9 +279,6 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment:
-      name: staging
-      url: ${{ vars.STAGING_URL }}
     concurrency:
       group: deploy-staging
       cancel-in-progress: false
@@ -318,7 +314,7 @@ jobs:
           reset-data: "true"          # staging starts from a clean migrated database each release
           log-group: ${{ vars.LOG_GROUP_PREFIX && format('{0}/staging', vars.LOG_GROUP_PREFIX) || '' }}
           aws-region: ${{ env.AWS_REGION }}
-          instance-id: ${{ vars.EC2_INSTANCE_ID }}
+          instance-id: ${{ vars.STAGING_INSTANCE_ID }}
           ssh-host: ${{ vars.EC2_HOST }}
           ssh-user: ${{ vars.EC2_SSH_USER || 'ec2-user' }}
           ssh-key: ${{ secrets.EC2_SSH_KEY }}
@@ -404,9 +400,6 @@ jobs:
     needs: [image, staging-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment:
-      name: production
-      url: ${{ vars.PRODUCTION_URL }}
     concurrency:
       group: deploy-production
       cancel-in-progress: false
@@ -451,7 +444,7 @@ jobs:
           reset-data: "false"
           log-group: ${{ vars.LOG_GROUP_PREFIX && format('{0}/production', vars.LOG_GROUP_PREFIX) || '' }}
           aws-region: ${{ env.AWS_REGION }}
-          instance-id: ${{ vars.EC2_INSTANCE_ID }}
+          instance-id: ${{ vars.PRODUCTION_INSTANCE_ID }}
           ssh-host: ${{ vars.EC2_HOST }}
           ssh-user: ${{ vars.EC2_SSH_USER || 'ec2-user' }}
           ssh-key: ${{ secrets.EC2_SSH_KEY }}
@@ -474,7 +467,7 @@ jobs:
           app-env: Production
           log-group: ${{ vars.LOG_GROUP_PREFIX && format('{0}/production', vars.LOG_GROUP_PREFIX) || '' }}
           aws-region: ${{ env.AWS_REGION }}
-          instance-id: ${{ vars.EC2_INSTANCE_ID }}
+          instance-id: ${{ vars.PRODUCTION_INSTANCE_ID }}
           ssh-host: ${{ vars.EC2_HOST }}
           ssh-user: ${{ vars.EC2_SSH_USER || 'ec2-user' }}
           ssh-key: ${{ secrets.EC2_SSH_KEY }}
@@ -526,9 +519,6 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.redeploy_sha != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment:
-      name: production
-      url: ${{ vars.PRODUCTION_URL }}
     concurrency:
       group: deploy-production
       cancel-in-progress: false
@@ -568,7 +558,7 @@ jobs:
           app-env: Production
           log-group: ${{ vars.LOG_GROUP_PREFIX && format('{0}/production', vars.LOG_GROUP_PREFIX) || '' }}
           aws-region: ${{ env.AWS_REGION }}
-          instance-id: ${{ vars.EC2_INSTANCE_ID }}
+          instance-id: ${{ vars.PRODUCTION_INSTANCE_ID }}
           ssh-host: ${{ vars.EC2_HOST }}
           ssh-user: ${{ vars.EC2_SSH_USER || 'ec2-user' }}
           ssh-key: ${{ secrets.EC2_SSH_KEY }}
