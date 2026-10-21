@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/tests/">
+    <Project Path="tests/TaskTracker.E2ETests/TaskTracker.E2ETests.csproj" />
+    <Project Path="tests/TaskTracker.IntegrationTests/TaskTracker.IntegrationTests.csproj" />
+  </Folder>
+  <Project Path="TaskTracker/TaskTracker.csproj" />
+</Solution>

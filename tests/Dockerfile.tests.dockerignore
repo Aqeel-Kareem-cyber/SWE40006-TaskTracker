@@ -1,0 +1,13 @@
+# Build context exclusions for tests/Dockerfile.tests (paths are relative to the repo root).
+**/bin/
+**/obj/
+.git/
+.vs/
+.vscode/
+coverage/
+TestResults/
+**/TestResults/
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/playwright-artifacts/
