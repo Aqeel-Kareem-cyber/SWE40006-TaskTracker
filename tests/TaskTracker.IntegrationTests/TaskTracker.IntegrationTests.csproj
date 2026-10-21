@@ -19,6 +19,11 @@
     <Exclude>[TaskTracker]TaskTracker.Migrations.*,[TaskTracker]Program,[TaskTracker]AspNetCoreGeneratedDocument.*</Exclude>
     <ExcludeByFile>**/*.cshtml</ExcludeByFile>
     <ExcludeByAttribute>GeneratedCodeAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+    <!-- Coverage gate (Brief §2 / §5.2): fail the build if combined coverage drops below
+         80% line or 70% branch. Only enforced when coverage is collected (/p:CollectCoverage=true). -->
+    <Threshold>80,70</Threshold>
+    <ThresholdType>line,branch</ThresholdType>
+    <ThresholdStat>total</ThresholdStat>
   </PropertyGroup>
 
   <ItemGroup>
