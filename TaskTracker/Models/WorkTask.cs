@@ -6,8 +6,8 @@ public class WorkTask
 {
     public int Id { get; set; }
 
-    [Required(ErrorMessage = "Task title is required.")]
-    [StringLength(100, MinimumLength = 1,
+    // SEEDED FAULT: [Required] removed
+    [StringLength(100, MinimumLength = 0,
         ErrorMessage = "Title must be between 1 and 100 characters.")]
     public string Title { get; set; } = string.Empty;
 
